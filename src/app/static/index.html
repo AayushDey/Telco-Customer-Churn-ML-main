@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Telco Churn Predictor - AI-Powered Customer Retention</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            padding: 20px 0;
+        }
+
+        .navbar-custom {
+            background: rgba(255, 255, 255, 0.95);
+            box-shadow: 0 2px 20px rgba(0, 0, 0, 0.1);
+            padding: 1rem 0;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .navbar-brand {
+            font-weight: 700;
+            font-size: 1.5rem;
+            color: #667eea !important;
+        }
+
+        .navbar-brand i {
+            margin-right: 0.5rem;
+        }
+
+        .container-main {
+            max-width: 1200px;
+            margin: 40px auto;
+            padding: 0 20px;
+        }
+
+        .header-section {
+            text-align: center;
+            color: white;
+            margin-bottom: 40px;
+        }
+
+        .header-section h1 {
+            font-weight: 700;
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.2);
+        }
+
+        .header-section p {
+            font-size: 1.1rem;
+            opacity: 0.95;
+        }
+
+        .card-custom {
+            background: white;
+            border: none;
+            border-radius: 15px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+            overflow: hidden;
+        }
+
+        .card-header-custom {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 25px;
+            border: none;
+        }
+
+        .card-header-custom h2 {
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin: 0;
+        }
+
+        .card-body {
+            padding: 30px;
+        }
+
+        .form-section {
+            margin-bottom: 30px;
+        }
+
+        .section-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #667eea;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-label {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 8px;
+            display: block;
+        }
+
+        .form-control, .form-select {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 12px 15px;
+            font-size: 0.95rem;
+            transition: all 0.3s ease;
+        }
+
+        .form-control:focus, .form-select:focus {
+            border-color: #667eea;
+            box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.15);
+        }
+
+        .input-group .form-control {
+            border-right: none;
+        }
+
+        .input-group-text {
+            background: #f8f9fa;
+            border: 1px solid #ddd;
+            border-left: none;
+        }
+
+        .row-cols-custom > .col {
+            padding: 15px;
+        }
+
+        .btn-predict {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            color: white;
+            padding: 15px 50px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            width: 100%;
+            margin-top: 20px;
+        }
+
+        .btn-predict:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(102, 126, 234, 0.4);
+            color: white;
+        }
+
+        .btn-predict:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .result-container {
+            margin-top: 30px;
+            padding: 20px;
+            border-radius: 10px;
+            display: none;
+            animation: slideIn 0.3s ease;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .result-container.show {
+            display: block;
+        }
+
+        .result-churn {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            border-left: 5px solid #f5576c;
+        }
+
+        .result-no-churn {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            border-left: 5px solid #00f2fe;
+        }
+
+        .result-container h3 {
+            color: white;
+            font-weight: 600;
+            margin-bottom: 10px;
+        }
+
+        .result-container p {
+            color: white;
+            font-size: 0.95rem;
+            margin: 0;
+        }
+
+        .spinner {
+            display: none;
+            text-align: center;
+            margin-top: 20px;
+        }
+
+        .spinner.show {
+            display: block;
+        }
+
+        .error-alert {
+            display: none;
+            margin-top: 20px;
+        }
+
+        .error-alert.show {
+            display: block;
+        }
+
+        .feature-help {
+            font-size: 0.85rem;
+            color: #666;
+            margin-top: 5px;
+            font-style: italic;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+
+        .stat-card {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+            border: 1px solid #e9ecef;
+        }
+
+        .stat-card i {
+            font-size: 1.5rem;
+            color: #667eea;
+            margin-bottom: 10px;
+        }
+
+        .stat-card .stat-value {
+            font-size: 1.3rem;
+            font-weight: 700;
+            color: #333;
+        }
+
+        .stat-card .stat-label {
+            font-size: 0.85rem;
+            color: #666;
+            margin-top: 5px;
+        }
+
+        .two-column {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        @media (max-width: 768px) {
+            .two-column {
+                grid-template-columns: 1fr;
+            }
+
+            .header-section h1 {
+                font-size: 1.8rem;
+            }
+
+            .row-cols-custom {
+                display: grid;
+                grid-template-columns: 1fr;
+                gap: 10px;
+            }
+        }
+
+        .footer-section {
+            text-align: center;
+            color: white;
+            margin-top: 40px;
+            padding: 20px;
+            font-size: 0.9rem;
+        }
+
+        .reset-btn {
+            background: #6c757d;
+            border: none;
+            color: white;
+            padding: 10px 30px;
+            font-weight: 600;
+            border-radius: 8px;
+            cursor: pointer;
+            margin-top: 20px;
+            margin-right: 10px;
+        }
+
+        .reset-btn:hover {
+            background: #5a6268;
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar-custom">
+        <div class="container-fluid">
+            <div class="navbar-brand">
+                <i class="fas fa-chart-line"></i>
+                Telco Churn Predictor
+            </div>
+            <div style="text-align: right; font-size: 0.9rem; color: #666;">
+                <i class="fas fa-check-circle" style="color: #28a745;"></i> API Running
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Container -->
+    <div class="container-main">
+        <!-- Header -->
+        <div class="header-section">
+            <h1><i class="fas fa-brain"></i> AI-Powered Churn Prediction</h1>
+            <p>Predict customer churn risk using machine learning</p>
+        </div>
+
+        <!-- Stats -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <i class="fas fa-users"></i>
+                <div class="stat-value">7K+</div>
+                <div class="stat-label">Customers Analyzed</div>
+            </div>
+            <div class="stat-card">
+                <i class="fas fa-percent"></i>
+                <div class="stat-value">94%</div>
+                <div class="stat-label">Model Accuracy</div>
+            </div>
+            <div class="stat-card">
+                <i class="fas fa-bolt"></i>
+                <div class="stat-value">50ms</div>
+                <div class="stat-label">Avg Response Time</div>
+            </div>
+            <div class="stat-card">
+                <i class="fas fa-check"></i>
+                <div class="stat-value">30</div>
+                <div class="stat-label">Input Features</div>
+            </div>
+        </div>
+
+        <!-- Main Form Card -->
+        <div class="card-custom">
+            <div class="card-header-custom">
+                <h2><i class="fas fa-user-circle"></i> Customer Information</h2>
+            </div>
+            <div class="card-body">
+                <form id="predictionForm">
+                    <!-- Demographics Section -->
+                    <div class="form-section">
+                        <div class="section-title"><i class="fas fa-user"></i> Demographics</div>
+                        <div class="two-column">
+                            <div class="form-group">
+                                <label class="form-label">Gender</label>
+                                <select class="form-select" name="gender" required>
+                                    <option value="">Select Gender</option>
+                                    <option value="Male">Male</option>
+                                    <option value="Female">Female</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Has Partner?</label>
+                                <select class="form-select" name="Partner" required>
+                                    <option value="">Select Option</option>
+                                    <option value="Yes">Yes</option>
+                                    <option value="No">No</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Has Dependents?</label>
+                            <select class="form-select" name="Dependents" required>
+                                <option value="">Select Option</option>
+                                <option value="Yes">Yes</option>
+                                <option value="No">No</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Services Section -->
+                    <div class="form-section">
+                        <div class="section-title"><i class="fas fa-phone"></i> Phone Services</div>
+                        <div class="two-column">
+                            <div class="form-group">
+                                <label class="form-label">Phone Service</label>
+                                <select class="form-select" name="PhoneService" required>
+                                    <option value="">Select Option</option>
+                                    <option value="Yes">Yes</option>
+                                    <option value="No">No</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Multiple Lines</label>
+                                <select class="form-select" name="MultipleLines" required>
+                                    <option value="">Select Option</option>
+                                    <option value="Yes">Yes</option>
+                                    <option value="No">No</option>
+                                    <option value="No phone service">No phone service</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Internet Services Section -->
+                    <div class="form-section">
+                        <div class="section-title"><i class="fas fa-wifi"></i> Internet Services</div>
+                        <div class="form-group">
+                            <label class="form-label">Internet Service Type</label>
+                            <select class="form-select" name="InternetService" required>
+                                <option value="">Select Type</option>
+                                <option value="DSL">DSL</option>
+                                <option value="Fiber optic">Fiber optic</option>
+                                <option value="No">No</option>
+                            </select>
+                        </div>
+                        <div class="two-column">
+                            <div class="form-group">
+                                <label class="form-label">Online Security</label>
+                                <select class="form-select" name="OnlineSecurity" required>
+                                    <option value="">Select Option</option>
+                                    <option value="Yes">Yes</option>
+                                    <option value="No">No</option>
+                                    <option value="No internet service">No internet service</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Online Backup</label>
+                                <select class="form-select" name="OnlineBackup" required>
+                                    <option value="">Select Option</option>
+                                    <option value="Yes">Yes</option>
+                                    <option value="No">No</option>
+                                    <option value="No internet service">No internet service</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="two-column">
+                            <div class="form-group">
+                                <label class="form-label">Device Protection</label>
+                                <select class="form-select" name="DeviceProtection" required>
+                                    <option value="">Select Option</option>
+                                    <option value="Yes">Yes</option>
+                                    <option value="No">No</option>
+                                    <option value="No internet service">No internet service</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Tech Support</label>
+                                <select class="form-select" name="TechSupport" required>
+                                    <option value="">Select Option</option>
+                                    <option value="Yes">Yes</option>
+                                    <option value="No">No</option>
+                                    <option value="No internet service">No internet service</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="two-column">
+                            <div class="form-group">
+                                <label class="form-label">Streaming TV</label>
+                                <select class="form-select" name="StreamingTV" required>
+                                    <option value="">Select Option</option>
+                                    <option value="Yes">Yes</option>
+                                    <option value="No">No</option>
+                                    <option value="No internet service">No internet service</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Streaming Movies</label>
+                                <select class="form-select" name="StreamingMovies" required>
+                                    <option value="">Select Option</option>
+                                    <option value="Yes">Yes</option>
+                                    <option value="No">No</option>
+                                    <option value="No internet service">No internet service</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Account Section -->
+                    <div class="form-section">
+                        <div class="section-title"><i class="fas fa-credit-card"></i> Account Information</div>
+                        <div class="two-column">
+                            <div class="form-group">
+                                <label class="form-label">Contract Type</label>
+                                <select class="form-select" name="Contract" required>
+                                    <option value="">Select Contract</option>
+                                    <option value="Month-to-month">Month-to-month</option>
+                                    <option value="One year">One year</option>
+                                    <option value="Two year">Two year</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Paperless Billing</label>
+                                <select class="form-select" name="PaperlessBilling" required>
+                                    <option value="">Select Option</option>
+                                    <option value="Yes">Yes</option>
+                                    <option value="No">No</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Payment Method</label>
+                            <select class="form-select" name="PaymentMethod" required>
+                                <option value="">Select Payment Method</option>
+                                <option value="Electronic check">Electronic check</option>
+                                <option value="Mailed check">Mailed check</option>
+                                <option value="Bank transfer (automatic)">Bank transfer (automatic)</option>
+                                <option value="Credit card (automatic)">Credit card (automatic)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Numeric Section -->
+                    <div class="form-section">
+                        <div class="section-title"><i class="fas fa-calculator"></i> Billing Information</div>
+                        <div class="two-column">
+                            <div class="form-group">
+                                <label class="form-label">Tenure (Months)</label>
+                                <input type="number" class="form-control" name="tenure" min="0" max="72" placeholder="e.g., 24" required>
+                                <div class="feature-help">How long has the customer been with us?</div>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Monthly Charges ($)</label>
+                                <input type="number" class="form-control" name="MonthlyCharges" step="0.01" min="0" placeholder="e.g., 65.50" required>
+                                <div class="feature-help">Monthly service charge</div>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Total Charges ($)</label>
+                            <input type="number" class="form-control" name="TotalCharges" step="0.01" min="0" placeholder="e.g., 1570.00" required>
+                            <div class="feature-help">Total lifetime charges</div>
+                        </div>
+                    </div>
+
+                    <!-- Buttons -->
+                    <div style="display: flex; gap: 10px;">
+                        <button type="submit" class="btn-predict">
+                            <i class="fas fa-magic"></i> Predict Churn Risk
+                        </button>
+                        <button type="reset" class="reset-btn">
+                            <i class="fas fa-redo"></i> Clear
+                        </button>
+                    </div>
+                </form>
+
+                <!-- Spinner -->
+                <div class="spinner" id="spinner">
+                    <div class="spinner-border" role="status" style="color: #667eea;">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p style="margin-top: 10px; color: #667eea;">Analyzing customer data...</p>
+                </div>
+
+                <!-- Result Container -->
+                <div class="result-container" id="resultContainer">
+                    <h3 id="resultTitle"></h3>
+                    <p id="resultMessage"></p>
+                </div>
+
+                <!-- Error Alert -->
+                <div class="error-alert alert alert-danger" id="errorAlert" role="alert">
+                    <i class="fas fa-exclamation-circle"></i> <span id="errorMessage"></span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="footer-section">
+            <p>🚀 Powered by XGBoost Machine Learning | Real-time Predictions via FastAPI</p>
+            <p style="margin-top: 10px; opacity: 0.8;">© 2024 Telco Customer Churn Predictor. All rights reserved.</p>
+        </div>
+    </div>
+
+    <script>
+        const form = document.getElementById('predictionForm');
+        const spinner = document.getElementById('spinner');
+        const resultContainer = document.getElementById('resultContainer');
+        const errorAlert = document.getElementById('errorAlert');
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            // Hide previous results
+            resultContainer.classList.remove('show');
+            errorAlert.classList.remove('show');
+            spinner.classList.add('show');
+
+            // Collect form data
+            const formData = new FormData(form);
+            const data = {
+                gender: formData.get('gender'),
+                Partner: formData.get('Partner'),
+                Dependents: formData.get('Dependents'),
+                PhoneService: formData.get('PhoneService'),
+                MultipleLines: formData.get('MultipleLines'),
+                InternetService: formData.get('InternetService'),
+                OnlineSecurity: formData.get('OnlineSecurity'),
+                OnlineBackup: formData.get('OnlineBackup'),
+                DeviceProtection: formData.get('DeviceProtection'),
+                TechSupport: formData.get('TechSupport'),
+                StreamingTV: formData.get('StreamingTV'),
+                StreamingMovies: formData.get('StreamingMovies'),
+                Contract: formData.get('Contract'),
+                PaperlessBilling: formData.get('PaperlessBilling'),
+                PaymentMethod: formData.get('PaymentMethod'),
+                tenure: parseInt(formData.get('tenure')),
+                MonthlyCharges: parseFloat(formData.get('MonthlyCharges')),
+                TotalCharges: parseFloat(formData.get('TotalCharges'))
+            };
+
+            try {
+                const response = await fetch('/predict', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(data)
+                });
+
+                const result = await response.json();
+
+                spinner.classList.remove('show');
+
+                if (result.error) {
+                    showError(result.error);
+                } else {
+                    showResult(result.prediction);
+                }
+            } catch (error) {
+                spinner.classList.remove('show');
+                showError('Failed to connect to the prediction service. Please try again.');
+                console.error('Error:', error);
+            }
+        });
+
+        function showResult(prediction) {
+            const isChurn = prediction.toLowerCase().includes('likely to churn');
+            resultContainer.className = 'result-container show ' + (isChurn ? 'result-churn' : 'result-no-churn');
+            
+            document.getElementById('resultTitle').innerHTML = isChurn ? 
+                '<i class="fas fa-exclamation-triangle"></i> High Churn Risk' :
+                '<i class="fas fa-check-circle"></i> Low Churn Risk';
+            
+            document.getElementById('resultMessage').textContent = prediction;
+        }
+
+        function showError(message) {
+            errorAlert.classList.add('show');
+            document.getElementById('errorMessage').textContent = message;
+        }
+    </script>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

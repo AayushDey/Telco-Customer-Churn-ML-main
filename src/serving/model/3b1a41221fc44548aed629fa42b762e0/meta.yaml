@@ -1,0 +1,15 @@
+artifact_uri: file:///Users/riadanas/Desktop/Telco Customer Churn MLE/mlruns/255324724357295771/3b1a41221fc44548aed629fa42b762e0/artifacts
+end_time: 1755582652447
+entry_point_name: ''
+experiment_id: '255324724357295771'
+lifecycle_stage: active
+run_id: 3b1a41221fc44548aed629fa42b762e0
+run_name: wise-smelt-612
+run_uuid: 3b1a41221fc44548aed629fa42b762e0
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1755582649409
+status: 3
+tags: []
+user_id: riadanas
