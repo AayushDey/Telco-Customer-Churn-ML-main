@@ -13,6 +13,14 @@ import pandas as pd
 import numpy as np
 import streamlit as st
 
+# ── Streamlit Page Configuration (Must be first Streamlit command) ───────────
+st.set_page_config(
+    page_title="ChurnSight — Telco Customer Churn ML",
+    page_icon="⚡",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
+
 # Ensure root directory is in python path
 ROOT_DIR = os.path.abspath(os.path.dirname(__file__))
 if ROOT_DIR not in sys.path:
@@ -20,13 +28,6 @@ if ROOT_DIR not in sys.path:
 
 from src.serving.inference import predict
 
-# ── Streamlit Page Configuration ──────────────────────────────────────────────
-st.set_page_config(
-    page_title="ChurnSight — Telco Customer Churn ML",
-    page_icon="⚡",
-    layout="wide",
-    initial_sidebar_state="expanded",
-)
 
 # ── Custom CSS for Premium Design ────────────────────────────────────────────
 st.markdown("""
