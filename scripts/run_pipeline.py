@@ -7,6 +7,13 @@ import os
 import sys
 import time
 import argparse
+
+# Reconfigure stdout/stderr to UTF-8 so emoji characters don't crash
+# on Windows terminals that default to cp1252.
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 import pandas as pd
 import mlflow
 import mlflow.sklearn
@@ -22,10 +29,10 @@ from xgboost import XGBClassifier
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 # Local modules - Core pipeline components
-from src.data.load_data import load_data                    # Data loading with error handling
-from src.data.preprocess import preprocess_data            # Basic data cleaning
-from src.features.build_features import build_features     # Feature engineering (CRITICAL for model performance)
-from src.utils.validate_data import validate_telco_data    # Data quality validation
+from scripts.pipeline.load_data import load_data                    # Data loading with error handling
+from scripts.pipeline.preprocess import preprocess_data            # Basic data cleaning
+from scripts.pipeline.build_features import build_features     # Feature engineering (CRITICAL for model performance)
+from scripts.pipeline.validate_data import validate_telco_data    # Data quality validation
 
 def main(args):
     """
@@ -43,7 +50,10 @@ def main(args):
     else:
         mlruns_path = os.path.join(project_root, "mlruns")
     
-    mlflow.set_tracking_uri(mlruns_path)
+    # Convert Windows absolute paths to file:// URI so MLflow doesn't mistake
+    # the drive letter (e.g. 'C') for an unsupported URI scheme.
+    from pathlib import Path
+    mlflow.set_tracking_uri(Path(mlruns_path).as_uri())
     mlflow.set_experiment(args.experiment)  # Creates experiment if doesn't exist
 
     # Start MLflow run - all subsequent logging will be tracked under this run
@@ -237,11 +247,3 @@ if __name__ == "__main__":
     args = p.parse_args()
     main(args)
 
-"""
-# Use this below to run the pipeline:
-
-python scripts/run_pipeline.py \                                            
-    --input data/raw/Telco-Customer-Churn.csv \
-    --target Churn
-
-"""

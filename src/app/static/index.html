@@ -1,676 +1,1562 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Telco Churn Predictor - AI-Powered Customer Retention</title>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ChurnSight — AI-Powered Customer Churn Predictor</title>
+  <meta name="description" content="Predict telecom customer churn in real-time using XGBoost ML with SHAP explainability — powered by FastAPI." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg:        #0b0f1a;
+      --surface:   #111827;
+      --card:      rgba(255,255,255,0.04);
+      --border:    rgba(255,255,255,0.08);
+      --accent:    #6366f1;
+      --accent2:   #8b5cf6;
+      --danger:    #ef4444;
+      --success:   #22c55e;
+      --warning:   #f59e0b;
+      --text:      #f1f5f9;
+      --muted:     #94a3b8;
+      --radius:    14px;
+      --radius-sm: 8px;
+      --glow:      0 0 40px rgba(99,102,241,0.18);
+    }
 
-        body {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            padding: 20px 0;
-        }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', system-ui, sans-serif;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
 
-        .navbar-custom {
-            background: rgba(255, 255, 255, 0.95);
-            box-shadow: 0 2px 20px rgba(0, 0, 0, 0.1);
-            padding: 1rem 0;
-            position: sticky;
-            top: 0;
-            z-index: 100;
-        }
+    /* ── Background orbs ── */
+    .orb {
+      position: fixed; border-radius: 50%;
+      filter: blur(100px); opacity: 0.18;
+      pointer-events: none; z-index: 0;
+    }
+    .orb-1 { width: 500px; height: 500px; background: var(--accent); top: -150px; left: -100px; }
+    .orb-2 { width: 400px; height: 400px; background: var(--accent2); bottom: -100px; right: -80px; }
+    .orb-3 { width: 300px; height: 300px; background: var(--danger); top: 40%; left: 60%; }
 
-        .navbar-brand {
-            font-weight: 700;
-            font-size: 1.5rem;
-            color: #667eea !important;
-        }
+    .page { position: relative; z-index: 1; }
 
-        .navbar-brand i {
-            margin-right: 0.5rem;
-        }
+    /* ── Navbar ── */
+    nav {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 40px;
+      background: rgba(11,15,26,0.85);
+      backdrop-filter: blur(20px);
+      border-bottom: 1px solid var(--border);
+      position: sticky; top: 0; z-index: 100;
+      height: 64px;
+    }
+    .nav-brand {
+      display: flex; align-items: center; gap: 10px;
+      font-weight: 800; font-size: 1.25rem; letter-spacing: -0.02em;
+      flex-shrink: 0;
+    }
+    .nav-brand .logo-icon {
+      width: 34px; height: 34px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      border-radius: 9px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1rem;
+    }
 
-        .container-main {
-            max-width: 1200px;
-            margin: 40px auto;
-            padding: 0 20px;
-        }
+    /* ── Tab bar ── */
+    .tab-bar {
+      display: flex; align-items: center; gap: 4px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid var(--border);
+      border-radius: 100px;
+      padding: 4px;
+    }
+    .tab-btn {
+      padding: 7px 18px;
+      border-radius: 100px;
+      font-size: 0.82rem;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      font-family: inherit;
+      transition: all 0.2s;
+      display: flex; align-items: center; gap: 6px;
+      white-space: nowrap;
+    }
+    .tab-btn:hover { color: var(--text); }
+    .tab-btn.active {
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      color: white;
+      box-shadow: 0 2px 12px rgba(99,102,241,0.4);
+    }
+    .nav-pill {
+      background: rgba(99,102,241,0.12);
+      border: 1px solid rgba(99,102,241,0.3);
+      color: #a5b4fc;
+      padding: 6px 16px;
+      border-radius: 100px;
+      font-size: 0.78rem;
+      font-weight: 500;
+      text-decoration: none;
+      transition: all 0.2s;
+      flex-shrink: 0;
+    }
+    .nav-pill:hover { background: rgba(99,102,241,0.25); color: #c7d2fe; }
 
-        .header-section {
-            text-align: center;
-            color: white;
-            margin-bottom: 40px;
-        }
+    /* ── Hero ── */
+    .hero { text-align: center; padding: 56px 24px 36px; }
+    .hero-badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: rgba(99,102,241,0.1);
+      border: 1px solid rgba(99,102,241,0.25);
+      border-radius: 100px; padding: 5px 14px;
+      font-size: 0.78rem; color: #a5b4fc; font-weight: 500; margin-bottom: 20px;
+    }
+    .hero-badge span { width: 6px; height: 6px; background: var(--accent); border-radius: 50%; animation: pulse 2s infinite; }
+    .hero h1 {
+      font-size: clamp(2rem, 5vw, 3.2rem); font-weight: 800;
+      letter-spacing: -0.03em; line-height: 1.1;
+      background: linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 50%, #a5b4fc 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+      margin-bottom: 14px;
+    }
+    .hero p { color: var(--muted); font-size: 1.05rem; max-width: 520px; margin: 0 auto; line-height: 1.65; }
 
-        .header-section h1 {
-            font-weight: 700;
-            font-size: 2.5rem;
-            margin-bottom: 10px;
-            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.2);
-        }
+    /* ── Stats row ── */
+    .stats-grid {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 14px; max-width: 900px; margin: 36px auto 0; padding: 0 24px;
+    }
+    .stat-card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 20px 22px;
+      backdrop-filter: blur(12px); transition: transform 0.2s, border-color 0.2s;
+    }
+    .stat-card:hover { transform: translateY(-3px); border-color: rgba(99,102,241,0.3); }
+    .stat-label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-bottom: 6px; font-weight: 600; }
+    .stat-value { font-size: 1.85rem; font-weight: 800; letter-spacing: -0.04em; }
+    .stat-sub { font-size: 0.75rem; color: var(--muted); margin-top: 3px; }
+    .c-indigo { color: #818cf8; }
+    .c-purple { color: #c084fc; }
+    .c-green  { color: var(--success); }
+    .c-amber  { color: var(--warning); }
 
-        .header-section p {
-            font-size: 1.1rem;
-            opacity: 0.95;
-        }
+    /* ── Tab pages ── */
+    .tab-page { display: none; }
+    .tab-page.active { display: block; animation: fadeUp 0.3s ease; }
 
-        .card-custom {
-            background: white;
-            border: none;
-            border-radius: 15px;
-            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
-            overflow: hidden;
-        }
+    /* ── Main grid ── */
+    .main-grid {
+      display: grid; grid-template-columns: 1fr 380px; gap: 24px;
+      max-width: 1100px; margin: 40px auto 80px; padding: 0 24px; align-items: start;
+    }
 
-        .card-header-custom {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 25px;
-            border: none;
-        }
+    /* ── Glass card ── */
+    .glass-card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: var(--radius); backdrop-filter: blur(16px); overflow: hidden;
+    }
+    .card-head { padding: 24px 28px 20px; border-bottom: 1px solid var(--border); }
+    .card-head h2 { font-size: 1.05rem; font-weight: 700; letter-spacing: -0.01em; }
+    .card-head p { color: var(--muted); font-size: 0.83rem; margin-top: 3px; }
+    .card-body { padding: 28px; }
 
-        .card-header-custom h2 {
-            font-size: 1.5rem;
-            font-weight: 600;
-            margin: 0;
-        }
+    /* ── Stepper ── */
+    .stepper { display: flex; align-items: center; gap: 0; margin-bottom: 32px; }
+    .step-item { display: flex; align-items: center; gap: 8px; flex: 1; }
+    .step-dot {
+      width: 28px; height: 28px; min-width: 28px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.72rem; font-weight: 700;
+      border: 2px solid var(--border); color: var(--muted); transition: all 0.3s;
+    }
+    .step-dot.active { background: var(--accent); border-color: var(--accent); color: white; box-shadow: 0 0 16px rgba(99,102,241,0.5); }
+    .step-dot.done  { background: rgba(34,197,94,0.15); border-color: var(--success); color: var(--success); }
+    .step-label { font-size: 0.75rem; color: var(--muted); font-weight: 500; white-space: nowrap; }
+    .step-label.active { color: var(--text); }
+    .step-line { flex: 1; height: 1px; background: var(--border); margin: 0 4px; transition: background 0.3s; }
+    .step-line.done { background: var(--success); }
 
-        .card-body {
-            padding: 30px;
-        }
+    /* ── Step panels ── */
+    .step-panel { display: none; }
+    .step-panel.active { display: block; animation: fadeUp 0.3s ease; }
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(10px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
 
-        .form-section {
-            margin-bottom: 30px;
-        }
+    /* ── Section labels ── */
+    .section-label {
+      font-size: 0.7rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.1em; color: var(--accent);
+      margin-bottom: 16px; padding-bottom: 10px; border-bottom: 1px solid var(--border);
+    }
 
-        .section-title {
-            font-size: 1.1rem;
-            font-weight: 600;
-            color: #333;
-            margin-bottom: 15px;
-            padding-bottom: 10px;
-            border-bottom: 2px solid #667eea;
-        }
+    /* ── Form grid ── */
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .form-grid.cols-1 { grid-template-columns: 1fr; }
+    .form-grid.cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+    .field { display: flex; flex-direction: column; gap: 6px; }
+    .field label { font-size: 0.78rem; font-weight: 600; color: var(--muted); }
+    .field input, .field select {
+      background: rgba(255,255,255,0.05); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); color: var(--text);
+      padding: 10px 14px; font-size: 0.88rem; font-family: inherit;
+      outline: none; transition: border-color 0.2s, box-shadow 0.2s;
+      appearance: none; -webkit-appearance: none;
+    }
+    .field select {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2.5'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+      background-repeat: no-repeat; background-position: right 14px center; padding-right: 36px;
+    }
+    .field select option { background: #1e2737; color: var(--text); }
+    .field input:focus, .field select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(99,102,241,0.15); }
+    .field input::placeholder { color: #475569; }
+    .field input.invalid, .field select.invalid { border-color: var(--danger); box-shadow: 0 0 0 3px rgba(239,68,68,0.12); }
 
-        .form-group {
-            margin-bottom: 20px;
-        }
+    /* ── Step nav buttons ── */
+    .step-nav { display: flex; gap: 10px; margin-top: 28px; justify-content: flex-end; }
+    .btn {
+      padding: 10px 22px; border-radius: var(--radius-sm);
+      font-size: 0.88rem; font-weight: 600; cursor: pointer; border: none;
+      font-family: inherit; transition: all 0.2s;
+      display: flex; align-items: center; gap: 7px;
+    }
+    .btn-ghost { background: transparent; border: 1px solid var(--border); color: var(--muted); }
+    .btn-ghost:hover { border-color: rgba(255,255,255,0.2); color: var(--text); }
+    .btn-primary {
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      color: white; box-shadow: 0 4px 20px rgba(99,102,241,0.35);
+    }
+    .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 6px 28px rgba(99,102,241,0.5); }
+    .btn-primary:active { transform: translateY(0); }
+    .btn-success {
+      background: linear-gradient(135deg, #16a34a, #22c55e);
+      color: white; box-shadow: 0 4px 20px rgba(34,197,94,0.3);
+    }
+    .btn-success:hover { transform: translateY(-1px); box-shadow: 0 6px 28px rgba(34,197,94,0.45); }
+    .btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none !important; }
 
-        .form-label {
-            font-weight: 600;
-            color: #333;
-            margin-bottom: 8px;
-            display: block;
-        }
+    /* ── Right panel (sticky) ── */
+    .right-panel { position: sticky; top: 84px; display: flex; flex-direction: column; gap: 18px; }
 
-        .form-control, .form-select {
-            border: 1px solid #ddd;
-            border-radius: 8px;
-            padding: 12px 15px;
-            font-size: 0.95rem;
-            transition: all 0.3s ease;
-        }
+    /* ── Risk gauge ── */
+    .gauge-card { padding: 28px; text-align: center; }
+    .gauge-title { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); font-weight: 700; margin-bottom: 22px; }
+    .gauge-wrap { position: relative; display: inline-block; margin-bottom: 8px; }
+    .gauge-svg { width: 160px; height: 90px; overflow: visible; }
+    .gauge-track { fill: none; stroke: rgba(255,255,255,0.07); stroke-width: 16; stroke-linecap: round; }
+    .gauge-fill  { fill: none; stroke: var(--accent); stroke-width: 16; stroke-linecap: round; transition: stroke-dashoffset 0.8s cubic-bezier(.4,0,.2,1), stroke 0.5s; }
+    .gauge-val {
+      position: absolute; bottom: -4px; left: 50%; transform: translateX(-50%);
+      font-size: 2rem; font-weight: 800; letter-spacing: -0.04em;
+    }
+    .gauge-label { font-size: 0.75rem; color: var(--muted); margin-top: 6px; }
+    .risk-bar-wrap { margin-top: 18px; }
+    .risk-bar-label { display: flex; justify-content: space-between; font-size: 0.72rem; color: var(--muted); margin-bottom: 6px; }
+    .risk-bar-track { background: rgba(255,255,255,0.07); border-radius: 100px; height: 6px; overflow: hidden; }
+    .risk-bar-fill { height: 100%; border-radius: 100px; transition: width 0.8s cubic-bezier(.4,0,.2,1), background 0.5s; background: var(--accent); width: 0%; }
 
-        .form-control:focus, .form-select:focus {
-            border-color: #667eea;
-            box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.15);
-        }
+    /* ── Result card ── */
+    .result-card {
+      padding: 24px; border-radius: var(--radius);
+      display: none; animation: fadeUp 0.4s ease;
+      border: 1px solid var(--border);
+    }
+    .result-card.show { display: block; }
+    .result-card.churn { background: rgba(239,68,68,0.08); border-color: rgba(239,68,68,0.3); box-shadow: 0 0 40px rgba(239,68,68,0.1); }
+    .result-card.safe  { background: rgba(34,197,94,0.08); border-color: rgba(34,197,94,0.3); box-shadow: 0 0 40px rgba(34,197,94,0.1); }
+    .result-icon { width: 46px; height: 46px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 1.4rem; margin-bottom: 12px; }
+    .result-card.churn .result-icon { background: rgba(239,68,68,0.15); }
+    .result-card.safe  .result-icon { background: rgba(34,197,94,0.15); }
+    .result-badges { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+    .result-badge {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 3px 10px; border-radius: 100px;
+      font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em;
+    }
+    .result-card.churn .result-badge { background: rgba(239,68,68,0.15); color: #fca5a5; }
+    .result-card.safe  .result-badge { background: rgba(34,197,94,0.15); color: #86efac; }
+    /* Confidence badge */
+    .conf-badge {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 3px 10px; border-radius: 100px;
+      font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
+    }
+    .conf-borderline { background: rgba(245,158,11,0.15); color: #fcd34d; }
+    .conf-moderate   { background: rgba(99,102,241,0.15); color: #a5b4fc; }
+    .conf-high-churn { background: rgba(239,68,68,0.2); color: #fca5a5; }
+    .conf-high-safe  { background: rgba(34,197,94,0.2); color: #86efac; }
+    .result-title { font-size: 1.1rem; font-weight: 700; margin-bottom: 6px; }
+    .result-desc  { font-size: 0.82rem; color: var(--muted); line-height: 1.55; }
+    .result-tips { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); }
+    .result-tips-title { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-bottom: 8px; }
+    .tip-item { display: flex; align-items: flex-start; gap: 8px; font-size: 0.78rem; color: var(--muted); margin-bottom: 5px; line-height: 1.4; }
+    .tip-bullet { min-width: 5px; height: 5px; border-radius: 50%; margin-top: 5px; }
+    .result-card.churn .tip-bullet { background: #f87171; }
+    .result-card.safe  .tip-bullet { background: #4ade80; }
 
-        .input-group .form-control {
-            border-right: none;
-        }
+    /* ── SHAP Panel ── */
+    .shap-panel {
+      margin-top: 14px; padding-top: 14px;
+      border-top: 1px solid var(--border);
+    }
+    .shap-summary {
+      display: flex; align-items: center; justify-content: space-between;
+      cursor: pointer; list-style: none; user-select: none;
+      font-size: 0.78rem; font-weight: 700;
+      color: #a5b4fc;
+      padding: 2px 0;
+    }
+    .shap-summary::-webkit-details-marker { display: none; }
+    .shap-summary::after { content: '▸'; font-size: 0.7rem; transition: transform 0.25s; }
+    details[open] .shap-summary::after { transform: rotate(90deg); }
+    .shap-subtitle { font-size: 0.68rem; color: var(--muted); margin: 8px 0 12px; font-weight: 400; }
+    .shap-row {
+      display: flex; align-items: center; gap: 8px;
+      margin-bottom: 7px;
+    }
+    .shap-feature-name {
+      font-size: 0.7rem; color: var(--muted);
+      width: 130px; flex-shrink: 0;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .shap-bar-track {
+      flex: 1; height: 7px; background: rgba(255,255,255,0.05);
+      border-radius: 100px; overflow: hidden; position: relative;
+    }
+    .shap-bar-fill {
+      height: 100%; border-radius: 100px;
+      transition: width 0.6s cubic-bezier(.4,0,.2,1);
+      min-width: 2px;
+    }
+    .shap-bar-fill.pos { background: linear-gradient(90deg, #ef4444, #f87171); }
+    .shap-bar-fill.neg { background: linear-gradient(90deg, #22c55e, #4ade80); }
+    .shap-impact {
+      font-size: 0.68rem; font-weight: 700;
+      width: 38px; text-align: right; flex-shrink: 0;
+    }
+    .shap-impact.pos { color: #fca5a5; }
+    .shap-impact.neg { color: #86efac; }
+    .shap-legend {
+      display: flex; gap: 14px; margin-top: 10px; padding-top: 8px;
+      border-top: 1px solid var(--border);
+    }
+    .shap-legend-item { display: flex; align-items: center; gap: 5px; font-size: 0.65rem; color: var(--muted); }
+    .shap-legend-dot { width: 8px; height: 8px; border-radius: 50%; }
 
-        .input-group-text {
-            background: #f8f9fa;
-            border: 1px solid #ddd;
-            border-left: none;
-        }
+    /* ── Info card ── */
+    .info-card { padding: 20px 24px; }
+    .info-card-title { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.09em; color: var(--muted); margin-bottom: 14px; }
+    .info-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--border); }
+    .info-row:last-child { border-bottom: none; }
+    .info-key { font-size: 0.78rem; color: var(--muted); }
+    .info-val { font-size: 0.78rem; font-weight: 600; color: var(--text); }
+    .dot-green { width: 7px; height: 7px; border-radius: 50%; background: var(--success); display: inline-block; margin-right: 5px; box-shadow: 0 0 6px var(--success); animation: pulse 2s infinite; }
 
-        .row-cols-custom > .col {
-            padding: 15px;
-        }
+    /* ── Batch tab ── */
+    .batch-wrap { max-width: 1100px; margin: 40px auto 80px; padding: 0 24px; }
+    .drop-zone {
+      border: 2px dashed var(--border);
+      border-radius: var(--radius);
+      padding: 56px 32px;
+      text-align: center;
+      transition: border-color 0.25s, background 0.25s;
+      cursor: pointer;
+      background: var(--card);
+      backdrop-filter: blur(16px);
+    }
+    .drop-zone:hover, .drop-zone.drag-over {
+      border-color: var(--accent);
+      background: rgba(99,102,241,0.06);
+    }
+    .drop-icon { font-size: 2.8rem; margin-bottom: 14px; }
+    .drop-title { font-size: 1.1rem; font-weight: 700; margin-bottom: 6px; }
+    .drop-sub { font-size: 0.83rem; color: var(--muted); margin-bottom: 20px; }
+    .drop-file-name {
+      font-size: 0.82rem; color: #a5b4fc; font-weight: 600;
+      background: rgba(99,102,241,0.1); border: 1px solid rgba(99,102,241,0.25);
+      padding: 4px 14px; border-radius: 100px; display: inline-block; margin-top: 10px;
+    }
+    #csvFileInput { display: none; }
+    .batch-actions { display: flex; gap: 12px; margin-top: 20px; justify-content: center; }
 
-        .btn-predict {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            border: none;
-            color: white;
-            padding: 15px 50px;
-            font-size: 1.1rem;
-            font-weight: 600;
-            border-radius: 8px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            width: 100%;
-            margin-top: 20px;
-        }
+    /* ── Results table ── */
+    .results-table-wrap {
+      margin-top: 28px; animation: fadeUp 0.4s ease;
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: var(--radius); backdrop-filter: blur(16px); overflow: hidden;
+    }
+    .results-table-head {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 20px 24px; border-bottom: 1px solid var(--border);
+    }
+    .results-table-head h3 { font-size: 1rem; font-weight: 700; }
+    .results-table-head .meta { font-size: 0.78rem; color: var(--muted); margin-top: 2px; }
+    .table-scroll { overflow-x: auto; }
+    table {
+      width: 100%; border-collapse: collapse;
+      font-size: 0.8rem;
+    }
+    thead th {
+      padding: 12px 16px; text-align: left;
+      font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em;
+      color: var(--muted); border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+    tbody tr { border-bottom: 1px solid rgba(255,255,255,0.04); transition: background 0.15s; }
+    tbody tr:last-child { border-bottom: none; }
+    tbody tr:hover { background: rgba(255,255,255,0.02); }
+    td { padding: 11px 16px; color: var(--text); vertical-align: middle; white-space: nowrap; }
+    .tbl-badge {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 3px 10px; border-radius: 100px;
+      font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
+    }
+    .tbl-churn { background: rgba(239,68,68,0.15); color: #fca5a5; }
+    .tbl-safe  { background: rgba(34,197,94,0.15); color: #86efac; }
+    .tbl-conf-borderline { background: rgba(245,158,11,0.1); color: #fcd34d; }
+    .tbl-conf-moderate   { background: rgba(99,102,241,0.1); color: #a5b4fc; }
+    .tbl-conf-high       { background: rgba(255,255,255,0.06); color: var(--text); }
+    .prob-bar-cell { display: flex; align-items: center; gap: 8px; }
+    .prob-bar { flex: 1; height: 5px; background: rgba(255,255,255,0.06); border-radius: 100px; overflow: hidden; min-width: 60px; }
+    .prob-bar-fill { height: 100%; border-radius: 100px; }
+    .prob-val { font-weight: 700; width: 38px; text-align: right; }
 
-        .btn-predict:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 10px 25px rgba(102, 126, 234, 0.4);
-            color: white;
-        }
+    /* ── History tab ── */
+    .history-wrap { max-width: 1100px; margin: 40px auto 80px; padding: 0 24px; }
+    .history-stats {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 28px;
+    }
+    .history-stat {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 20px 22px;
+      backdrop-filter: blur(12px); text-align: center;
+    }
+    .history-stat-val { font-size: 2rem; font-weight: 800; letter-spacing: -0.04em; }
+    .history-stat-lbl { font-size: 0.72rem; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; margin-top: 4px; }
 
-        .btn-predict:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
-        }
+    /* ── Empty state ── */
+    .empty-state {
+      text-align: center; padding: 60px 24px;
+      color: var(--muted);
+    }
+    .empty-state .empty-icon { font-size: 2.8rem; margin-bottom: 14px; }
+    .empty-state h3 { font-size: 1rem; font-weight: 600; color: var(--text); margin-bottom: 6px; }
+    .empty-state p { font-size: 0.83rem; }
 
-        .result-container {
-            margin-top: 30px;
-            padding: 20px;
-            border-radius: 10px;
-            display: none;
-            animation: slideIn 0.3s ease;
-        }
+    /* ── Error rows in batch ── */
+    .error-summary {
+      margin-top: 16px;
+      background: rgba(239,68,68,0.06);
+      border: 1px solid rgba(239,68,68,0.2);
+      border-radius: var(--radius-sm);
+      padding: 14px 18px;
+    }
+    .error-summary p { font-size: 0.8rem; color: #fca5a5; margin-bottom: 4px; }
 
-        @keyframes slideIn {
-            from {
-                opacity: 0;
-                transform: translateY(10px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
+    /* ── Loading overlay ── */
+    .loading-overlay {
+      display: none; position: fixed; inset: 0; z-index: 999;
+      background: rgba(11,15,26,0.7); backdrop-filter: blur(4px);
+      align-items: center; justify-content: center;
+      flex-direction: column; gap: 16px;
+    }
+    .loading-overlay.show { display: flex; }
+    .spinner-ring {
+      width: 48px; height: 48px;
+      border: 3px solid rgba(99,102,241,0.2);
+      border-top-color: var(--accent); border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    .loading-text { font-size: 0.88rem; color: var(--muted); }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
 
-        .result-container.show {
-            display: block;
-        }
+    /* ── Toast ── */
+    .toast {
+      position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%) translateY(80px);
+      background: rgba(239,68,68,0.12); border: 1px solid rgba(239,68,68,0.35);
+      color: #fca5a5; padding: 12px 22px; border-radius: 100px;
+      font-size: 0.83rem; font-weight: 500; backdrop-filter: blur(16px);
+      z-index: 9999; transition: transform 0.3s ease; white-space: nowrap;
+    }
+    .toast.show { transform: translateX(-50%) translateY(0); }
 
-        .result-churn {
-            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-            border-left: 5px solid #f5576c;
-        }
-
-        .result-no-churn {
-            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
-            border-left: 5px solid #00f2fe;
-        }
-
-        .result-container h3 {
-            color: white;
-            font-weight: 600;
-            margin-bottom: 10px;
-        }
-
-        .result-container p {
-            color: white;
-            font-size: 0.95rem;
-            margin: 0;
-        }
-
-        .spinner {
-            display: none;
-            text-align: center;
-            margin-top: 20px;
-        }
-
-        .spinner.show {
-            display: block;
-        }
-
-        .error-alert {
-            display: none;
-            margin-top: 20px;
-        }
-
-        .error-alert.show {
-            display: block;
-        }
-
-        .feature-help {
-            font-size: 0.85rem;
-            color: #666;
-            margin-top: 5px;
-            font-style: italic;
-        }
-
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-            gap: 15px;
-            margin-bottom: 30px;
-        }
-
-        .stat-card {
-            background: #f8f9fa;
-            padding: 15px;
-            border-radius: 8px;
-            text-align: center;
-            border: 1px solid #e9ecef;
-        }
-
-        .stat-card i {
-            font-size: 1.5rem;
-            color: #667eea;
-            margin-bottom: 10px;
-        }
-
-        .stat-card .stat-value {
-            font-size: 1.3rem;
-            font-weight: 700;
-            color: #333;
-        }
-
-        .stat-card .stat-label {
-            font-size: 0.85rem;
-            color: #666;
-            margin-top: 5px;
-        }
-
-        .two-column {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 20px;
-        }
-
-        @media (max-width: 768px) {
-            .two-column {
-                grid-template-columns: 1fr;
-            }
-
-            .header-section h1 {
-                font-size: 1.8rem;
-            }
-
-            .row-cols-custom {
-                display: grid;
-                grid-template-columns: 1fr;
-                gap: 10px;
-            }
-        }
-
-        .footer-section {
-            text-align: center;
-            color: white;
-            margin-top: 40px;
-            padding: 20px;
-            font-size: 0.9rem;
-        }
-
-        .reset-btn {
-            background: #6c757d;
-            border: none;
-            color: white;
-            padding: 10px 30px;
-            font-weight: 600;
-            border-radius: 8px;
-            cursor: pointer;
-            margin-top: 20px;
-            margin-right: 10px;
-        }
-
-        .reset-btn:hover {
-            background: #5a6268;
-        }
-    </style>
+    /* ── Responsive ── */
+    @media (max-width: 820px) {
+      .main-grid { grid-template-columns: 1fr; }
+      .right-panel { position: static; }
+      nav { padding: 0 20px; }
+      .form-grid.cols-3 { grid-template-columns: 1fr 1fr; }
+      .history-stats { grid-template-columns: 1fr 1fr 1fr; }
+    }
+    @media (max-width: 600px) {
+      .tab-bar { gap: 2px; }
+      .tab-btn { padding: 6px 10px; font-size: 0.75rem; }
+      .form-grid, .form-grid.cols-3 { grid-template-columns: 1fr; }
+      .stats-grid { grid-template-columns: 1fr 1fr; }
+      .history-stats { grid-template-columns: 1fr; }
+      .batch-actions { flex-direction: column; }
+    }
+  </style>
 </head>
 <body>
-    <!-- Navigation -->
-    <nav class="navbar-custom">
-        <div class="container-fluid">
-            <div class="navbar-brand">
-                <i class="fas fa-chart-line"></i>
-                Telco Churn Predictor
-            </div>
-            <div style="text-align: right; font-size: 0.9rem; color: #666;">
-                <i class="fas fa-check-circle" style="color: #28a745;"></i> API Running
-            </div>
-        </div>
-    </nav>
+<!-- Background -->
+<div class="orb orb-1"></div>
+<div class="orb orb-2"></div>
+<div class="orb orb-3"></div>
 
-    <!-- Main Container -->
-    <div class="container-main">
-        <!-- Header -->
-        <div class="header-section">
-            <h1><i class="fas fa-brain"></i> AI-Powered Churn Prediction</h1>
-            <p>Predict customer churn risk using machine learning</p>
-        </div>
+<!-- Loading -->
+<div class="loading-overlay" id="loadingOverlay">
+  <div class="spinner-ring"></div>
+  <p class="loading-text" id="loadingText">Analyzing customer profile…</p>
+</div>
 
-        <!-- Stats -->
-        <div class="stats-grid">
-            <div class="stat-card">
-                <i class="fas fa-users"></i>
-                <div class="stat-value">7K+</div>
-                <div class="stat-label">Customers Analyzed</div>
-            </div>
-            <div class="stat-card">
-                <i class="fas fa-percent"></i>
-                <div class="stat-value">94%</div>
-                <div class="stat-label">Model Accuracy</div>
-            </div>
-            <div class="stat-card">
-                <i class="fas fa-bolt"></i>
-                <div class="stat-value">50ms</div>
-                <div class="stat-label">Avg Response Time</div>
-            </div>
-            <div class="stat-card">
-                <i class="fas fa-check"></i>
-                <div class="stat-value">30</div>
-                <div class="stat-label">Input Features</div>
-            </div>
-        </div>
+<!-- Toast -->
+<div class="toast" id="errorToast"></div>
 
-        <!-- Main Form Card -->
-        <div class="card-custom">
-            <div class="card-header-custom">
-                <h2><i class="fas fa-user-circle"></i> Customer Information</h2>
-            </div>
-            <div class="card-body">
-                <form id="predictionForm">
-                    <!-- Demographics Section -->
-                    <div class="form-section">
-                        <div class="section-title"><i class="fas fa-user"></i> Demographics</div>
-                        <div class="two-column">
-                            <div class="form-group">
-                                <label class="form-label">Gender</label>
-                                <select class="form-select" name="gender" required>
-                                    <option value="">Select Gender</option>
-                                    <option value="Male">Male</option>
-                                    <option value="Female">Female</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">Has Partner?</label>
-                                <select class="form-select" name="Partner" required>
-                                    <option value="">Select Option</option>
-                                    <option value="Yes">Yes</option>
-                                    <option value="No">No</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">Has Dependents?</label>
-                            <select class="form-select" name="Dependents" required>
-                                <option value="">Select Option</option>
-                                <option value="Yes">Yes</option>
-                                <option value="No">No</option>
-                            </select>
-                        </div>
-                    </div>
+<div class="page">
+  <!-- Navbar -->
+  <nav>
+    <div class="nav-brand">
+      <div class="logo-icon">⚡</div>
+      ChurnSight
+    </div>
+    <div class="tab-bar" role="tablist" aria-label="Main navigation">
+      <button class="tab-btn active" id="tab-btn-predict" role="tab" aria-selected="true" aria-controls="page-predict" onclick="switchTab('predict')">
+        🔮 Single Predict
+      </button>
+      <button class="tab-btn" id="tab-btn-batch" role="tab" aria-selected="false" aria-controls="page-batch" onclick="switchTab('batch')">
+        📂 Batch Upload
+      </button>
+      <button class="tab-btn" id="tab-btn-history" role="tab" aria-selected="false" aria-controls="page-history" onclick="switchTab('history')">
+        🕒 History
+      </button>
+    </div>
+    <a href="/docs" target="_blank" class="nav-pill" id="api-docs-link">API Docs ↗</a>
+  </nav>
 
-                    <!-- Services Section -->
-                    <div class="form-section">
-                        <div class="section-title"><i class="fas fa-phone"></i> Phone Services</div>
-                        <div class="two-column">
-                            <div class="form-group">
-                                <label class="form-label">Phone Service</label>
-                                <select class="form-select" name="PhoneService" required>
-                                    <option value="">Select Option</option>
-                                    <option value="Yes">Yes</option>
-                                    <option value="No">No</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">Multiple Lines</label>
-                                <select class="form-select" name="MultipleLines" required>
-                                    <option value="">Select Option</option>
-                                    <option value="Yes">Yes</option>
-                                    <option value="No">No</option>
-                                    <option value="No phone service">No phone service</option>
-                                </select>
-                            </div>
-                        </div>
-                    </div>
+  <!-- ════════════════════════════════════════════════════════
+       TAB: SINGLE PREDICT
+  ════════════════════════════════════════════════════════ -->
+  <div id="page-predict" class="tab-page active" role="tabpanel" aria-labelledby="tab-btn-predict">
 
-                    <!-- Internet Services Section -->
-                    <div class="form-section">
-                        <div class="section-title"><i class="fas fa-wifi"></i> Internet Services</div>
-                        <div class="form-group">
-                            <label class="form-label">Internet Service Type</label>
-                            <select class="form-select" name="InternetService" required>
-                                <option value="">Select Type</option>
-                                <option value="DSL">DSL</option>
-                                <option value="Fiber optic">Fiber optic</option>
-                                <option value="No">No</option>
-                            </select>
-                        </div>
-                        <div class="two-column">
-                            <div class="form-group">
-                                <label class="form-label">Online Security</label>
-                                <select class="form-select" name="OnlineSecurity" required>
-                                    <option value="">Select Option</option>
-                                    <option value="Yes">Yes</option>
-                                    <option value="No">No</option>
-                                    <option value="No internet service">No internet service</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">Online Backup</label>
-                                <select class="form-select" name="OnlineBackup" required>
-                                    <option value="">Select Option</option>
-                                    <option value="Yes">Yes</option>
-                                    <option value="No">No</option>
-                                    <option value="No internet service">No internet service</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div class="two-column">
-                            <div class="form-group">
-                                <label class="form-label">Device Protection</label>
-                                <select class="form-select" name="DeviceProtection" required>
-                                    <option value="">Select Option</option>
-                                    <option value="Yes">Yes</option>
-                                    <option value="No">No</option>
-                                    <option value="No internet service">No internet service</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">Tech Support</label>
-                                <select class="form-select" name="TechSupport" required>
-                                    <option value="">Select Option</option>
-                                    <option value="Yes">Yes</option>
-                                    <option value="No">No</option>
-                                    <option value="No internet service">No internet service</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div class="two-column">
-                            <div class="form-group">
-                                <label class="form-label">Streaming TV</label>
-                                <select class="form-select" name="StreamingTV" required>
-                                    <option value="">Select Option</option>
-                                    <option value="Yes">Yes</option>
-                                    <option value="No">No</option>
-                                    <option value="No internet service">No internet service</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">Streaming Movies</label>
-                                <select class="form-select" name="StreamingMovies" required>
-                                    <option value="">Select Option</option>
-                                    <option value="Yes">Yes</option>
-                                    <option value="No">No</option>
-                                    <option value="No internet service">No internet service</option>
-                                </select>
-                            </div>
-                        </div>
-                    </div>
+    <!-- Hero -->
+    <section class="hero">
+      <div class="hero-badge"><span></span> XGBoost · ROC-AUC 0.839 · Live</div>
+      <h1>Predict Customer Churn<br/>Before It Happens</h1>
+      <p>Enter a customer profile and our ML model instantly tells you whether they're at risk of leaving — so you can act first.</p>
+    </section>
 
-                    <!-- Account Section -->
-                    <div class="form-section">
-                        <div class="section-title"><i class="fas fa-credit-card"></i> Account Information</div>
-                        <div class="two-column">
-                            <div class="form-group">
-                                <label class="form-label">Contract Type</label>
-                                <select class="form-select" name="Contract" required>
-                                    <option value="">Select Contract</option>
-                                    <option value="Month-to-month">Month-to-month</option>
-                                    <option value="One year">One year</option>
-                                    <option value="Two year">Two year</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">Paperless Billing</label>
-                                <select class="form-select" name="PaperlessBilling" required>
-                                    <option value="">Select Option</option>
-                                    <option value="Yes">Yes</option>
-                                    <option value="No">No</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">Payment Method</label>
-                            <select class="form-select" name="PaymentMethod" required>
-                                <option value="">Select Payment Method</option>
-                                <option value="Electronic check">Electronic check</option>
-                                <option value="Mailed check">Mailed check</option>
-                                <option value="Bank transfer (automatic)">Bank transfer (automatic)</option>
-                                <option value="Credit card (automatic)">Credit card (automatic)</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    <!-- Numeric Section -->
-                    <div class="form-section">
-                        <div class="section-title"><i class="fas fa-calculator"></i> Billing Information</div>
-                        <div class="two-column">
-                            <div class="form-group">
-                                <label class="form-label">Tenure (Months)</label>
-                                <input type="number" class="form-control" name="tenure" min="0" max="72" placeholder="e.g., 24" required>
-                                <div class="feature-help">How long has the customer been with us?</div>
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">Monthly Charges ($)</label>
-                                <input type="number" class="form-control" name="MonthlyCharges" step="0.01" min="0" placeholder="e.g., 65.50" required>
-                                <div class="feature-help">Monthly service charge</div>
-                            </div>
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">Total Charges ($)</label>
-                            <input type="number" class="form-control" name="TotalCharges" step="0.01" min="0" placeholder="e.g., 1570.00" required>
-                            <div class="feature-help">Total lifetime charges</div>
-                        </div>
-                    </div>
-
-                    <!-- Buttons -->
-                    <div style="display: flex; gap: 10px;">
-                        <button type="submit" class="btn-predict">
-                            <i class="fas fa-magic"></i> Predict Churn Risk
-                        </button>
-                        <button type="reset" class="reset-btn">
-                            <i class="fas fa-redo"></i> Clear
-                        </button>
-                    </div>
-                </form>
-
-                <!-- Spinner -->
-                <div class="spinner" id="spinner">
-                    <div class="spinner-border" role="status" style="color: #667eea;">
-                        <span class="visually-hidden">Loading...</span>
-                    </div>
-                    <p style="margin-top: 10px; color: #667eea;">Analyzing customer data...</p>
-                </div>
-
-                <!-- Result Container -->
-                <div class="result-container" id="resultContainer">
-                    <h3 id="resultTitle"></h3>
-                    <p id="resultMessage"></p>
-                </div>
-
-                <!-- Error Alert -->
-                <div class="error-alert alert alert-danger" id="errorAlert" role="alert">
-                    <i class="fas fa-exclamation-circle"></i> <span id="errorMessage"></span>
-                </div>
-            </div>
-        </div>
-
-        <!-- Footer -->
-        <div class="footer-section">
-            <p>🚀 Powered by XGBoost Machine Learning | Real-time Predictions via FastAPI</p>
-            <p style="margin-top: 10px; opacity: 0.8;">© 2024 Telco Customer Churn Predictor. All rights reserved.</p>
-        </div>
+    <!-- Stats -->
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-label">ROC-AUC</div>
+        <div class="stat-value c-indigo" data-count="83.9" data-suffix="%">0%</div>
+        <div class="stat-sub">Discrimination power</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Recall</div>
+        <div class="stat-value c-purple" data-count="82.4" data-suffix="%">0%</div>
+        <div class="stat-sub">Churners caught</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">F1 Score</div>
+        <div class="stat-value c-amber" data-count="60.9" data-suffix="%">0%</div>
+        <div class="stat-sub">Precision / recall balance</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Customers</div>
+        <div class="stat-value c-green" data-count="7043" data-suffix="">0</div>
+        <div class="stat-sub">Training samples</div>
+      </div>
     </div>
 
-    <script>
-        const form = document.getElementById('predictionForm');
-        const spinner = document.getElementById('spinner');
-        const resultContainer = document.getElementById('resultContainer');
-        const errorAlert = document.getElementById('errorAlert');
+    <!-- Main grid -->
+    <div class="main-grid">
 
-        form.addEventListener('submit', async (e) => {
-            e.preventDefault();
+      <!-- Left: Form -->
+      <div class="glass-card">
+        <div class="card-head">
+          <h2>Customer Profile</h2>
+          <p>Complete all 4 steps to generate a churn prediction</p>
+        </div>
+        <div class="card-body">
 
-            // Hide previous results
-            resultContainer.classList.remove('show');
-            errorAlert.classList.remove('show');
-            spinner.classList.add('show');
+          <!-- Stepper -->
+          <div class="stepper" id="stepper">
+            <div class="step-item">
+              <div class="step-dot active" id="dot-0">1</div>
+              <div class="step-label active" id="lbl-0">Demographics</div>
+            </div>
+            <div class="step-line" id="line-0"></div>
+            <div class="step-item">
+              <div class="step-dot" id="dot-1">2</div>
+              <div class="step-label" id="lbl-1">Services</div>
+            </div>
+            <div class="step-line" id="line-1"></div>
+            <div class="step-item">
+              <div class="step-dot" id="dot-2">3</div>
+              <div class="step-label" id="lbl-2">Account</div>
+            </div>
+            <div class="step-line" id="line-2"></div>
+            <div class="step-item">
+              <div class="step-dot" id="dot-3">4</div>
+              <div class="step-label" id="lbl-3">Billing</div>
+            </div>
+          </div>
 
-            // Collect form data
-            const formData = new FormData(form);
-            const data = {
-                gender: formData.get('gender'),
-                Partner: formData.get('Partner'),
-                Dependents: formData.get('Dependents'),
-                PhoneService: formData.get('PhoneService'),
-                MultipleLines: formData.get('MultipleLines'),
-                InternetService: formData.get('InternetService'),
-                OnlineSecurity: formData.get('OnlineSecurity'),
-                OnlineBackup: formData.get('OnlineBackup'),
-                DeviceProtection: formData.get('DeviceProtection'),
-                TechSupport: formData.get('TechSupport'),
-                StreamingTV: formData.get('StreamingTV'),
-                StreamingMovies: formData.get('StreamingMovies'),
-                Contract: formData.get('Contract'),
-                PaperlessBilling: formData.get('PaperlessBilling'),
-                PaymentMethod: formData.get('PaymentMethod'),
-                tenure: parseInt(formData.get('tenure')),
-                MonthlyCharges: parseFloat(formData.get('MonthlyCharges')),
-                TotalCharges: parseFloat(formData.get('TotalCharges'))
-            };
+          <form id="predictForm" novalidate>
 
-            try {
-                const response = await fetch('/predict', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify(data)
-                });
+            <!-- Step 0: Demographics -->
+            <div class="step-panel active" id="panel-0">
+              <div class="section-label">👤 Demographics</div>
+              <div class="form-grid">
+                <div class="field">
+                  <label for="gender">Gender</label>
+                  <select id="gender" name="gender">
+                    <option value="">Select…</option>
+                    <option value="Male">Male</option>
+                    <option value="Female">Female</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="Partner">Partner</label>
+                  <select id="Partner" name="Partner">
+                    <option value="">Select…</option>
+                    <option value="Yes">Yes</option>
+                    <option value="No">No</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="Dependents">Dependents</label>
+                  <select id="Dependents" name="Dependents">
+                    <option value="">Select…</option>
+                    <option value="Yes">Yes</option>
+                    <option value="No">No</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="PhoneService">Phone Service</label>
+                  <select id="PhoneService" name="PhoneService">
+                    <option value="">Select…</option>
+                    <option value="Yes">Yes</option>
+                    <option value="No">No</option>
+                  </select>
+                </div>
+              </div>
+              <div class="step-nav">
+                <button type="button" class="btn btn-primary" id="step0-next" onclick="nextStep(0)">Next →</button>
+              </div>
+            </div>
 
-                const result = await response.json();
+            <!-- Step 1: Services -->
+            <div class="step-panel" id="panel-1">
+              <div class="section-label">📡 Services</div>
+              <div class="form-grid">
+                <div class="field">
+                  <label for="MultipleLines">Multiple Lines</label>
+                  <select id="MultipleLines" name="MultipleLines">
+                    <option value="">Select…</option>
+                    <option value="Yes">Yes</option>
+                    <option value="No">No</option>
+                    <option value="No phone service">No phone service</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="InternetService">Internet Service</label>
+                  <select id="InternetService" name="InternetService">
+                    <option value="">Select…</option>
+                    <option value="DSL">DSL</option>
+                    <option value="Fiber optic">Fiber optic</option>
+                    <option value="No">No</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="OnlineSecurity">Online Security</label>
+                  <select id="OnlineSecurity" name="OnlineSecurity">
+                    <option value="">Select…</option>
+                    <option value="Yes">Yes</option>
+                    <option value="No">No</option>
+                    <option value="No internet service">No internet service</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="OnlineBackup">Online Backup</label>
+                  <select id="OnlineBackup" name="OnlineBackup">
+                    <option value="">Select…</option>
+                    <option value="Yes">Yes</option>
+                    <option value="No">No</option>
+                    <option value="No internet service">No internet service</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="DeviceProtection">Device Protection</label>
+                  <select id="DeviceProtection" name="DeviceProtection">
+                    <option value="">Select…</option>
+                    <option value="Yes">Yes</option>
+                    <option value="No">No</option>
+                    <option value="No internet service">No internet service</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="TechSupport">Tech Support</label>
+                  <select id="TechSupport" name="TechSupport">
+                    <option value="">Select…</option>
+                    <option value="Yes">Yes</option>
+                    <option value="No">No</option>
+                    <option value="No internet service">No internet service</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="StreamingTV">Streaming TV</label>
+                  <select id="StreamingTV" name="StreamingTV">
+                    <option value="">Select…</option>
+                    <option value="Yes">Yes</option>
+                    <option value="No">No</option>
+                    <option value="No internet service">No internet service</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="StreamingMovies">Streaming Movies</label>
+                  <select id="StreamingMovies" name="StreamingMovies">
+                    <option value="">Select…</option>
+                    <option value="Yes">Yes</option>
+                    <option value="No">No</option>
+                    <option value="No internet service">No internet service</option>
+                  </select>
+                </div>
+              </div>
+              <div class="step-nav">
+                <button type="button" class="btn btn-ghost" id="step1-back" onclick="prevStep(1)">← Back</button>
+                <button type="button" class="btn btn-primary" id="step1-next" onclick="nextStep(1)">Next →</button>
+              </div>
+            </div>
 
-                spinner.classList.remove('show');
+            <!-- Step 2: Account -->
+            <div class="step-panel" id="panel-2">
+              <div class="section-label">📋 Account Details</div>
+              <div class="form-grid cols-1">
+                <div class="field">
+                  <label for="Contract">Contract Type</label>
+                  <select id="Contract" name="Contract">
+                    <option value="">Select…</option>
+                    <option value="Month-to-month">Month-to-month</option>
+                    <option value="One year">One year</option>
+                    <option value="Two year">Two year</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="PaperlessBilling">Paperless Billing</label>
+                  <select id="PaperlessBilling" name="PaperlessBilling">
+                    <option value="">Select…</option>
+                    <option value="Yes">Yes</option>
+                    <option value="No">No</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="PaymentMethod">Payment Method</label>
+                  <select id="PaymentMethod" name="PaymentMethod">
+                    <option value="">Select…</option>
+                    <option value="Electronic check">Electronic check</option>
+                    <option value="Mailed check">Mailed check</option>
+                    <option value="Bank transfer (automatic)">Bank transfer (automatic)</option>
+                    <option value="Credit card (automatic)">Credit card (automatic)</option>
+                  </select>
+                </div>
+              </div>
+              <div class="step-nav">
+                <button type="button" class="btn btn-ghost" id="step2-back" onclick="prevStep(2)">← Back</button>
+                <button type="button" class="btn btn-primary" id="step2-next" onclick="nextStep(2)">Next →</button>
+              </div>
+            </div>
 
-                if (result.error) {
-                    showError(result.error);
-                } else {
-                    showResult(result.prediction);
-                }
-            } catch (error) {
-                spinner.classList.remove('show');
-                showError('Failed to connect to the prediction service. Please try again.');
-                console.error('Error:', error);
-            }
-        });
+            <!-- Step 3: Billing / Predict -->
+            <div class="step-panel" id="panel-3">
+              <div class="section-label">💳 Billing Information</div>
+              <div class="form-grid cols-3">
+                <div class="field">
+                  <label for="tenure">Tenure (months)</label>
+                  <input type="number" id="tenure" name="tenure" min="0" max="72" placeholder="e.g. 24"
+                    oninput="autoFillTotal()" />
+                </div>
+                <div class="field">
+                  <label for="MonthlyCharges">Monthly Charges ($)</label>
+                  <input type="number" id="MonthlyCharges" name="MonthlyCharges" step="0.01" min="0" placeholder="e.g. 65.50"
+                    oninput="autoFillTotal()" />
+                </div>
+                <div class="field">
+                  <label for="TotalCharges">Total Charges ($)</label>
+                  <input type="number" id="TotalCharges" name="TotalCharges" step="0.01" min="0" placeholder="Auto-calculated" />
+                </div>
+              </div>
+              <div class="step-nav">
+                <button type="button" class="btn btn-ghost" id="step3-back" onclick="prevStep(3)">← Back</button>
+                <button type="button" class="btn btn-ghost" onclick="resetAll()" style="margin-right:auto;" id="reset-btn">✕ Reset</button>
+                <button type="submit" class="btn btn-primary" id="submitBtn">⚡ Predict Now</button>
+              </div>
+            </div>
 
-        function showResult(prediction) {
-            const isChurn = prediction.toLowerCase().includes('likely to churn');
-            resultContainer.className = 'result-container show ' + (isChurn ? 'result-churn' : 'result-no-churn');
-            
-            document.getElementById('resultTitle').innerHTML = isChurn ? 
-                '<i class="fas fa-exclamation-triangle"></i> High Churn Risk' :
-                '<i class="fas fa-check-circle"></i> Low Churn Risk';
-            
-            document.getElementById('resultMessage').textContent = prediction;
-        }
+          </form>
+        </div>
+      </div>
 
-        function showError(message) {
-            errorAlert.classList.add('show');
-            document.getElementById('errorMessage').textContent = message;
-        }
-    </script>
+      <!-- Right panel -->
+      <div class="right-panel">
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+        <!-- Risk gauge card -->
+        <div class="glass-card">
+          <div class="gauge-card">
+            <div class="gauge-title">Risk Meter</div>
+            <div class="gauge-wrap">
+              <svg class="gauge-svg" viewBox="0 0 160 90" aria-label="Churn risk gauge">
+                <path class="gauge-track" d="M 20 80 A 60 60 0 0 1 140 80" stroke-dasharray="188.5" stroke-dashoffset="0"/>
+                <path class="gauge-fill" id="gaugeFill"
+                  d="M 20 80 A 60 60 0 0 1 140 80"
+                  stroke-dasharray="188.5"
+                  stroke-dashoffset="188.5"/>
+              </svg>
+              <div class="gauge-val" id="gaugeVal" style="color:var(--muted)">—</div>
+            </div>
+            <div class="gauge-label" id="gaugeLabel">Submit a prediction to see risk</div>
+            <div class="risk-bar-wrap">
+              <div class="risk-bar-label"><span>Low</span><span>High</span></div>
+              <div class="risk-bar-track"><div class="risk-bar-fill" id="riskBarFill"></div></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Result card -->
+        <div class="result-card" id="resultCard">
+          <div class="result-icon" id="resultIcon"></div>
+          <div class="result-badges">
+            <div class="result-badge" id="resultBadge"></div>
+            <div class="conf-badge" id="confBadge"></div>
+          </div>
+          <div class="result-title" id="resultTitle"></div>
+          <div class="result-desc"  id="resultDesc"></div>
+          <div class="result-tips" id="resultTips">
+            <div class="result-tips-title">🎯 Recommended Actions</div>
+            <div id="tipsList"></div>
+          </div>
+          <!-- SHAP panel -->
+          <div class="shap-panel" id="shapPanel" style="display:none;">
+            <details id="shapDetails">
+              <summary class="shap-summary">🔍 Why this prediction?</summary>
+              <p class="shap-subtitle">Feature impact on churn probability. Red = increases risk, green = reduces risk.</p>
+              <div id="shapBars"></div>
+              <div class="shap-legend">
+                <div class="shap-legend-item">
+                  <div class="shap-legend-dot" style="background:#ef4444"></div>
+                  Increases churn risk
+                </div>
+                <div class="shap-legend-item">
+                  <div class="shap-legend-dot" style="background:#22c55e"></div>
+                  Reduces churn risk
+                </div>
+              </div>
+            </details>
+          </div>
+        </div>
+
+        <!-- Model info card -->
+        <div class="glass-card">
+          <div class="info-card">
+            <div class="info-card-title">Model Status</div>
+            <div class="info-row">
+              <span class="info-key">Status</span>
+              <span class="info-val"><span class="dot-green"></span>Live</span>
+            </div>
+            <div class="info-row">
+              <span class="info-key">Algorithm</span>
+              <span class="info-val">XGBoost</span>
+            </div>
+            <div class="info-row">
+              <span class="info-key">Features</span>
+              <span class="info-val">30 engineered</span>
+            </div>
+            <div class="info-row">
+              <span class="info-key">Threshold</span>
+              <span class="info-val">0.35</span>
+            </div>
+            <div class="info-row">
+              <span class="info-key">Training size</span>
+              <span class="info-val">5,634 samples</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════
+       TAB: BATCH UPLOAD
+  ════════════════════════════════════════════════════════ -->
+  <div id="page-batch" class="tab-page" role="tabpanel" aria-labelledby="tab-btn-batch">
+    <section class="hero">
+      <div class="hero-badge"><span></span> Batch CSV Analysis</div>
+      <h1>Analyze Customers<br/>at Scale</h1>
+      <p>Upload a CSV with the 18 required columns and get instant churn predictions for every row — with full export.</p>
+    </section>
+
+    <div class="batch-wrap">
+      <div class="drop-zone" id="dropZone" onclick="document.getElementById('csvFileInput').click()"
+        ondragover="onDragOver(event)" ondragleave="onDragLeave(event)" ondrop="onDrop(event)">
+        <div class="drop-icon">📂</div>
+        <div class="drop-title">Drop your CSV file here</div>
+        <div class="drop-sub">or click to browse — must contain all 18 required columns</div>
+        <div class="drop-file-name" id="dropFileName" style="display:none;"></div>
+        <input type="file" id="csvFileInput" accept=".csv" onchange="onFileSelect(event)" />
+      </div>
+
+      <div class="batch-actions">
+        <button class="btn btn-primary" id="analyzeCsvBtn" onclick="runBatchPredict()" disabled>
+          ⚡ Analyze CSV
+        </button>
+        <button class="btn btn-success" id="exportCsvBtn" onclick="exportResults()" disabled style="display:none;">
+          ⬇ Export Results
+        </button>
+      </div>
+
+      <div id="batchResults" style="display:none;"></div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════
+       TAB: HISTORY
+  ════════════════════════════════════════════════════════ -->
+  <div id="page-history" class="tab-page" role="tabpanel" aria-labelledby="tab-btn-history">
+    <section class="hero">
+      <div class="hero-badge"><span></span> Prediction Log</div>
+      <h1>Prediction History</h1>
+      <p>Browse all past predictions stored in your local SQLite database. Track outcomes and identify patterns.</p>
+    </section>
+
+    <div class="history-wrap">
+      <div class="history-stats" id="historyStats">
+        <div class="history-stat">
+          <div class="history-stat-val c-indigo" id="stat-total">—</div>
+          <div class="history-stat-lbl">Total Analyzed</div>
+        </div>
+        <div class="history-stat">
+          <div class="history-stat-val c-amber" id="stat-churners">—</div>
+          <div class="history-stat-lbl">High Risk</div>
+        </div>
+        <div class="history-stat">
+          <div class="history-stat-val c-purple" id="stat-avg">—</div>
+          <div class="history-stat-lbl">Avg Churn Probability</div>
+        </div>
+      </div>
+
+      <div class="results-table-wrap">
+        <div class="results-table-head">
+          <div>
+            <h3>Recent Predictions</h3>
+            <div class="meta" id="historyMeta">Last 50 records</div>
+          </div>
+          <button class="btn btn-ghost" onclick="loadHistory()" id="refresh-history-btn" style="font-size:0.8rem; padding:8px 16px;">
+            ↺ Refresh
+          </button>
+        </div>
+        <div id="historyTableBody"></div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /.page -->
+
+<script>
+  /* ══════════════════════════════════════════════════════════════
+     TAB SWITCHING
+  ══════════════════════════════════════════════════════════════ */
+  const TABS = ['predict', 'batch', 'history'];
+
+  function switchTab(name) {
+    TABS.forEach(t => {
+      document.getElementById(`page-${t}`).classList.toggle('active', t === name);
+      const btn = document.getElementById(`tab-btn-${t}`);
+      btn.classList.toggle('active', t === name);
+      btn.setAttribute('aria-selected', t === name);
+    });
+    if (name === 'history') loadHistory();
+  }
+
+  /* ══════════════════════════════════════════════════════════════
+     STEPPER
+  ══════════════════════════════════════════════════════════════ */
+  let currentStep = 0;
+  const TOTAL = 4;
+
+  function updateStepper() {
+    for (let i = 0; i < TOTAL; i++) {
+      const dot   = document.getElementById(`dot-${i}`);
+      const lbl   = document.getElementById(`lbl-${i}`);
+      const panel = document.getElementById(`panel-${i}`);
+      if (i < currentStep) {
+        dot.className = 'step-dot done'; dot.textContent = '✓';
+        lbl.className = 'step-label';
+      } else if (i === currentStep) {
+        dot.className = 'step-dot active'; dot.textContent = i + 1;
+        lbl.className = 'step-label active';
+      } else {
+        dot.className = 'step-dot'; dot.textContent = i + 1;
+        lbl.className = 'step-label';
+      }
+      panel.className = 'step-panel' + (i === currentStep ? ' active' : '');
+      if (i < TOTAL - 1) {
+        document.getElementById(`line-${i}`).className = 'step-line' + (i < currentStep ? ' done' : '');
+      }
+    }
+  }
+
+  function validateStep(step) {
+    const panel = document.getElementById(`panel-${step}`);
+    const fields = panel.querySelectorAll('select, input');
+    let ok = true;
+    fields.forEach(f => {
+      f.classList.remove('invalid');
+      if (!f.value || f.value === '') { f.classList.add('invalid'); ok = false; }
+    });
+    return ok;
+  }
+
+  function nextStep(step) {
+    if (!validateStep(step)) { showToast('Please fill in all fields before continuing.'); return; }
+    currentStep = step + 1;
+    updateStepper();
+  }
+  function prevStep(step) { currentStep = step - 1; updateStepper(); }
+
+  function resetAll() {
+    currentStep = 0;
+    document.getElementById('predictForm').reset();
+    document.querySelectorAll('.invalid').forEach(e => e.classList.remove('invalid'));
+    updateStepper();
+    resetGauge();
+    document.getElementById('resultCard').className = 'result-card';
+    document.getElementById('shapPanel').style.display = 'none';
+  }
+
+  /* ══════════════════════════════════════════════════════════════
+     AUTO-FILL TOTAL CHARGES
+  ══════════════════════════════════════════════════════════════ */
+  function autoFillTotal() {
+    const tenure  = parseFloat(document.getElementById('tenure').value) || 0;
+    const monthly = parseFloat(document.getElementById('MonthlyCharges').value) || 0;
+    const totalEl = document.getElementById('TotalCharges');
+    if (tenure > 0 && monthly > 0) {
+      totalEl.value = (tenure * monthly).toFixed(2);
+      totalEl.style.color = '#a5b4fc';  // hint that it was auto-filled
+    } else {
+      totalEl.style.color = '';
+    }
+  }
+
+  /* ══════════════════════════════════════════════════════════════
+     FORM SUBMIT — SINGLE PREDICT
+  ══════════════════════════════════════════════════════════════ */
+  document.getElementById('predictForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!validateStep(3)) { showToast('Please fill in all billing fields.'); return; }
+
+    const fd = new FormData(e.target);
+    const payload = {
+      gender:           fd.get('gender'),
+      Partner:          fd.get('Partner'),
+      Dependents:       fd.get('Dependents'),
+      PhoneService:     fd.get('PhoneService'),
+      MultipleLines:    fd.get('MultipleLines'),
+      InternetService:  fd.get('InternetService'),
+      OnlineSecurity:   fd.get('OnlineSecurity'),
+      OnlineBackup:     fd.get('OnlineBackup'),
+      DeviceProtection: fd.get('DeviceProtection'),
+      TechSupport:      fd.get('TechSupport'),
+      StreamingTV:      fd.get('StreamingTV'),
+      StreamingMovies:  fd.get('StreamingMovies'),
+      Contract:         fd.get('Contract'),
+      PaperlessBilling: fd.get('PaperlessBilling'),
+      PaymentMethod:    fd.get('PaymentMethod'),
+      tenure:           parseInt(fd.get('tenure')),
+      MonthlyCharges:   parseFloat(fd.get('MonthlyCharges')),
+      TotalCharges:     parseFloat(fd.get('TotalCharges')),
+    };
+
+    document.getElementById('loadingText').textContent = 'Analyzing customer profile…';
+    document.getElementById('loadingOverlay').classList.add('show');
+
+    try {
+      const res  = await fetch('/predict', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const json = await res.json();
+      document.getElementById('loadingOverlay').classList.remove('show');
+      if (json.error) { showToast(json.error); return; }
+      showResult(json, payload);
+    } catch (err) {
+      document.getElementById('loadingOverlay').classList.remove('show');
+      showToast('Could not connect to prediction service. Is the server running?');
+    }
+  });
+
+  /* ══════════════════════════════════════════════════════════════
+     SHOW RESULT (SINGLE PREDICT)
+  ══════════════════════════════════════════════════════════════ */
+  function showResult(data, payload) {
+    const isChurn = data.prediction.toLowerCase().includes('likely to churn') &&
+                    !data.prediction.toLowerCase().includes('not');
+    // ── Real probability from model ──
+    const riskPct = Math.round((data.probability || 0) * 100);
+
+    // Gauge
+    setGauge(riskPct, isChurn);
+
+    // Result card
+    const card = document.getElementById('resultCard');
+    card.className = 'result-card show ' + (isChurn ? 'churn' : 'safe');
+    document.getElementById('resultIcon').textContent    = isChurn ? '⚠️' : '✅';
+    document.getElementById('resultBadge').textContent   = isChurn ? '⚠ High Risk' : '✓ Low Risk';
+    document.getElementById('resultTitle').textContent   = isChurn ? 'Customer Likely to Churn' : 'Customer Likely to Stay';
+    document.getElementById('resultDesc').textContent    = isChurn
+      ? 'This customer profile shows strong indicators of churn. Immediate retention action is recommended.'
+      : 'This customer shows a stable profile with low churn probability. Continue standard engagement.';
+
+    // Confidence badge
+    renderConfBadge(data.confidence, isChurn);
+
+    // Tips (retention recommender)
+    const tips = isChurn ? getChurnTips(payload, data) : getSafeTips(payload, data);
+    document.getElementById('tipsList').innerHTML = tips.map(t =>
+      `<div class="tip-item"><div class="tip-bullet"></div><span>${t}</span></div>`
+    ).join('');
+
+    // SHAP panel
+    renderShapPanel(data.shap_values || []);
+  }
+
+  /* ── Confidence badge ── */
+  function renderConfBadge(confidence, isChurn) {
+    const el = document.getElementById('confBadge');
+    el.textContent = '';
+    if (!confidence) { el.style.display = 'none'; return; }
+    el.style.display = '';
+    const cls = {
+      'Borderline':       'conf-borderline',
+      'Moderate':         'conf-moderate',
+      'High Confidence':  isChurn ? 'conf-high-churn' : 'conf-high-safe',
+    }[confidence] || 'conf-moderate';
+    el.className = `conf-badge ${cls}`;
+    const icon = { 'Borderline': '⚠️', 'Moderate': '📊', 'High Confidence': '🎯' }[confidence] || '';
+    el.textContent = `${icon} ${confidence}`;
+  }
+
+  /* ── SHAP panel ── */
+  function renderShapPanel(shapValues) {
+    const panel = document.getElementById('shapPanel');
+    const bars  = document.getElementById('shapBars');
+
+    if (!shapValues || shapValues.length === 0) {
+      panel.style.display = 'none';
+      return;
+    }
+    panel.style.display = '';
+
+    const maxAbs = Math.max(...shapValues.map(v => Math.abs(v.impact)), 0.001);
+
+    bars.innerHTML = shapValues.map(v => {
+      const isPos  = v.impact > 0;
+      const widPct = Math.round((Math.abs(v.impact) / maxAbs) * 100);
+      const sign   = isPos ? '+' : '';
+      return `
+        <div class="shap-row" title="${v.raw_feature || v.feature}: ${sign}${v.impact}">
+          <div class="shap-feature-name" title="${v.feature}">${v.feature}</div>
+          <div class="shap-bar-track">
+            <div class="shap-bar-fill ${isPos ? 'pos' : 'neg'}"
+                 style="width:${widPct}%;" role="progressbar"
+                 aria-valuenow="${widPct}" aria-valuemin="0" aria-valuemax="100"></div>
+          </div>
+          <div class="shap-impact ${isPos ? 'pos' : 'neg'}">${sign}${v.impact.toFixed(3)}</div>
+        </div>`;
+    }).join('');
+
+    // Auto-open the details
+    document.getElementById('shapDetails').open = true;
+  }
+
+  /* ── Retention recommender (enhanced) ── */
+  function getChurnTips(p, data) {
+    const tips = [];
+    const conf = data.confidence || '';
+
+    if (p.Contract === 'Month-to-month' && p.MonthlyCharges > 60)
+      tips.push('🏷️ Lock-in Discount — offer 15% off for switching to an annual contract');
+    else if (p.Contract === 'Month-to-month')
+      tips.push('📄 Upgrade offer — promote a 1-year contract with a free month');
+
+    if (p.InternetService === 'Fiber optic' && p.OnlineSecurity === 'No')
+      tips.push('🔒 Security Bundle — add Online Security free for 3 months');
+
+    if (p.tenure < 6 && p.TechSupport === 'No')
+      tips.push('📞 Onboarding Call — schedule a welcome support call within 48 hours');
+    else if (p.TechSupport === 'No')
+      tips.push('🛠️ Tech Support — proactively assign a dedicated support rep');
+
+    if (p.PaymentMethod === 'Electronic check')
+      tips.push('💳 Auto-Pay incentive — $5/month discount for switching to bank transfer');
+
+    if (p.tenure < 12 && tips.length < 3)
+      tips.push('🎁 First-year loyalty reward — exclusive perk at 12-month milestone');
+
+    if (conf === 'High Confidence')
+      tips.push('🚨 Priority retention alert — escalate to senior retention team');
+
+    if (tips.length === 0)
+      tips.push('📋 Schedule a proactive retention call within 48 hours');
+
+    return tips.slice(0, 4);
+  }
+
+  function getSafeTips(p, data) {
+    const tips = [
+      '✅ Continue standard engagement cadence',
+      '💼 Consider upsell opportunities at next billing cycle',
+    ];
+    if (p.Contract !== 'Two year')
+      tips.push('📅 Promote longer-term contract for added savings');
+    else
+      tips.push('🏆 Reward loyalty with exclusive perks or priority support');
+    tips.push('📊 Flag for standard quarterly health check');
+    return tips;
+  }
+
+  /* ══════════════════════════════════════════════════════════════
+     GAUGE
+  ══════════════════════════════════════════════════════════════ */
+  function setGauge(pct, isChurn) {
+    const fill  = document.getElementById('gaugeFill');
+    const val   = document.getElementById('gaugeVal');
+    const bar   = document.getElementById('riskBarFill');
+    const lbl   = document.getElementById('gaugeLabel');
+    const totalLen = 188.5;
+    const offset   = totalLen * (1 - pct / 100);
+    fill.style.strokeDashoffset = offset;
+    fill.style.stroke = isChurn ? '#ef4444' : '#22c55e';
+    bar.style.width = pct + '%';
+    bar.style.background = isChurn
+      ? 'linear-gradient(90deg, #f59e0b, #ef4444)'
+      : 'linear-gradient(90deg, #22c55e, #86efac)';
+    val.textContent = pct + '%';
+    val.style.color = isChurn ? '#ef4444' : '#22c55e';
+    lbl.textContent = isChurn ? 'Elevated churn risk detected' : 'Low churn risk — customer stable';
+  }
+
+  function resetGauge() {
+    document.getElementById('gaugeFill').style.strokeDashoffset = '188.5';
+    document.getElementById('gaugeFill').style.stroke = 'var(--accent)';
+    document.getElementById('gaugeVal').textContent = '—';
+    document.getElementById('gaugeVal').style.color = 'var(--muted)';
+    document.getElementById('riskBarFill').style.width = '0%';
+    document.getElementById('gaugeLabel').textContent = 'Submit a prediction to see risk';
+  }
+
+  /* ══════════════════════════════════════════════════════════════
+     BATCH UPLOAD
+  ══════════════════════════════════════════════════════════════ */
+  let selectedFile = null;
+  let batchResultsData = [];
+
+  function onDragOver(e) { e.preventDefault(); document.getElementById('dropZone').classList.add('drag-over'); }
+  function onDragLeave()  { document.getElementById('dropZone').classList.remove('drag-over'); }
+  function onDrop(e) {
+    e.preventDefault();
+    document.getElementById('dropZone').classList.remove('drag-over');
+    const f = e.dataTransfer.files[0];
+    if (f) setSelectedFile(f);
+  }
+  function onFileSelect(e) { const f = e.target.files[0]; if (f) setSelectedFile(f); }
+
+  function setSelectedFile(f) {
+    if (!f.name.endsWith('.csv')) { showToast('Only .csv files are accepted.'); return; }
+    selectedFile = f;
+    const nameEl = document.getElementById('dropFileName');
+    nameEl.textContent = `📄 ${f.name} (${(f.size/1024).toFixed(1)} KB)`;
+    nameEl.style.display = 'inline-block';
+    document.getElementById('analyzeCsvBtn').disabled = false;
+  }
+
+  async function runBatchPredict() {
+    if (!selectedFile) return;
+    const fd = new FormData();
+    fd.append('file', selectedFile);
+    document.getElementById('loadingText').textContent = 'Running batch predictions…';
+    document.getElementById('loadingOverlay').classList.add('show');
+    try {
+      const res  = await fetch('/predict/batch', { method: 'POST', body: fd });
+      const json = await res.json();
+      document.getElementById('loadingOverlay').classList.remove('show');
+      if (json.detail) { showToast(json.detail); return; }
+      batchResultsData = json.predictions || [];
+      renderBatchResults(json);
+    } catch (err) {
+      document.getElementById('loadingOverlay').classList.remove('show');
+      showToast('Batch prediction failed. Is the server running?');
+    }
+  }
+
+  function renderBatchResults(json) {
+    const preds  = json.predictions || [];
+    const errors = json.errors      || [];
+    const wrap   = document.getElementById('batchResults');
+    wrap.style.display = 'block';
+
+    let html = `<div class="results-table-wrap">
+      <div class="results-table-head">
+        <div>
+          <h3>Batch Results</h3>
+          <div class="meta">${preds.length} predictions · ${errors.length} errors</div>
+        </div>
+        <button class="btn btn-success" onclick="exportResults()" style="font-size:0.8rem; padding:8px 16px;">⬇ Export CSV</button>
+      </div>`;
+
+    if (errors.length > 0) {
+      html += `<div class="error-summary">`;
+      errors.forEach(er => {
+        html += `<p>Row ${er.row}: ${er.error}</p>`;
+      });
+      html += `</div>`;
+    }
+
+    if (preds.length === 0) {
+      html += `<div class="empty-state">
+        <div class="empty-icon">😕</div>
+        <h3>No valid predictions</h3>
+        <p>Check that your CSV has all 18 required columns.</p>
+      </div>`;
+    } else {
+      html += `<div class="table-scroll"><table>
+        <thead><tr>
+          <th>Row</th>
+          <th>Tenure</th>
+          <th>Monthly ($)</th>
+          <th>Contract</th>
+          <th>Internet</th>
+          <th>Prediction</th>
+          <th>Probability</th>
+          <th>Confidence</th>
+        </tr></thead>
+        <tbody>`;
+
+      preds.forEach(p => {
+        const isChurn  = p.prediction.includes('Likely to churn') && !p.prediction.includes('Not');
+        const pct      = Math.round(p.probability * 100);
+        const barColor = isChurn
+          ? 'linear-gradient(90deg,#f59e0b,#ef4444)'
+          : 'linear-gradient(90deg,#22c55e,#86efac)';
+        const probColor = isChurn ? '#ef4444' : '#22c55e';
+        const confCls  = {
+          'Borderline':      'tbl-conf-borderline',
+          'Moderate':        'tbl-conf-moderate',
+          'High Confidence': 'tbl-conf-high',
+        }[p.confidence] || '';
+
+        html += `<tr>
+          <td style="color:var(--muted)">${p.row}</td>
+          <td>${p.tenure} mo</td>
+          <td>$${parseFloat(p.MonthlyCharges).toFixed(2)}</td>
+          <td>${p.Contract}</td>
+          <td>${p.InternetService}</td>
+          <td><span class="tbl-badge ${isChurn ? 'tbl-churn' : 'tbl-safe'}">${isChurn ? '⚠' : '✓'} ${isChurn ? 'High Risk' : 'Low Risk'}</span></td>
+          <td>
+            <div class="prob-bar-cell">
+              <div class="prob-bar">
+                <div class="prob-bar-fill" style="width:${pct}%; background:${barColor};"></div>
+              </div>
+              <span class="prob-val" style="color:${probColor}">${pct}%</span>
+            </div>
+          </td>
+          <td><span class="tbl-badge ${confCls}">${p.confidence}</span></td>
+        </tr>`;
+      });
+
+      html += `</tbody></table></div>`;
+    }
+    html += `</div>`;
+    wrap.innerHTML = html;
+    document.getElementById('exportCsvBtn').style.display = '';
+    document.getElementById('exportCsvBtn').disabled = false;
+  }
+
+  function exportResults() {
+    if (!batchResultsData.length) return;
+    const cols = ['row','gender','Partner','Dependents','PhoneService','MultipleLines',
+      'InternetService','OnlineSecurity','OnlineBackup','DeviceProtection','TechSupport',
+      'StreamingTV','StreamingMovies','Contract','PaperlessBilling','PaymentMethod',
+      'tenure','MonthlyCharges','TotalCharges','prediction','probability','confidence'];
+    const rows = [cols.join(',')];
+    batchResultsData.forEach(r => {
+      rows.push(cols.map(c => {
+        const v = r[c] ?? '';
+        return String(v).includes(',') ? `"${v}"` : v;
+      }).join(','));
+    });
+    const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url; a.download = 'churn_predictions.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  /* ══════════════════════════════════════════════════════════════
+     HISTORY
+  ══════════════════════════════════════════════════════════════ */
+  async function loadHistory() {
+    try {
+      const [histRes, statsRes] = await Promise.all([
+        fetch('/history?limit=50'),
+        fetch('/history/stats')
+      ]);
+      const rows  = await histRes.json();
+      const stats = await statsRes.json();
+      renderHistoryStats(stats);
+      renderHistoryTable(rows);
+    } catch (err) {
+      document.getElementById('historyTableBody').innerHTML =
+        `<div class="empty-state"><div class="empty-icon">⚠️</div><h3>Could not load history</h3><p>Make sure the server is running.</p></div>`;
+    }
+  }
+
+  function renderHistoryStats(stats) {
+    document.getElementById('stat-total').textContent    = (stats.total || 0).toLocaleString();
+    document.getElementById('stat-churners').textContent = (stats.churners || 0).toLocaleString();
+    document.getElementById('stat-avg').textContent      = `${stats.avg_probability || 0}%`;
+  }
+
+  function renderHistoryTable(rows) {
+    const body = document.getElementById('historyTableBody');
+    document.getElementById('historyMeta').textContent = `${rows.length} record${rows.length !== 1 ? 's' : ''} shown`;
+
+    if (!rows.length) {
+      body.innerHTML = `<div class="empty-state">
+        <div class="empty-icon">📭</div>
+        <h3>No predictions yet</h3>
+        <p>Run a prediction in the "Single Predict" or "Batch Upload" tab to start logging.</p>
+      </div>`;
+      return;
+    }
+
+    let html = `<div class="table-scroll"><table>
+      <thead><tr>
+        <th>Time</th>
+        <th>Prediction</th>
+        <th>Probability</th>
+        <th>Confidence</th>
+        <th>Tenure</th>
+        <th>Monthly ($)</th>
+        <th>Contract</th>
+        <th>Internet</th>
+        <th>Payment</th>
+      </tr></thead><tbody>`;
+
+    rows.forEach(r => {
+      const isChurn  = r.prediction.includes('Likely to churn') && !r.prediction.includes('Not');
+      const pct      = Math.round((r.probability || 0) * 100);
+      const barColor = isChurn
+        ? 'linear-gradient(90deg,#f59e0b,#ef4444)'
+        : 'linear-gradient(90deg,#22c55e,#86efac)';
+      const probColor = isChurn ? '#ef4444' : '#22c55e';
+      const confCls  = {
+        'Borderline':      'tbl-conf-borderline',
+        'Moderate':        'tbl-conf-moderate',
+        'High Confidence': 'tbl-conf-high',
+      }[r.confidence] || '';
+
+      html += `<tr>
+        <td style="color:var(--muted); font-size:0.75rem;">${r.timestamp}</td>
+        <td><span class="tbl-badge ${isChurn ? 'tbl-churn' : 'tbl-safe'}">${isChurn ? '⚠' : '✓'} ${isChurn ? 'High Risk' : 'Low Risk'}</span></td>
+        <td>
+          <div class="prob-bar-cell">
+            <div class="prob-bar">
+              <div class="prob-bar-fill" style="width:${pct}%; background:${barColor};"></div>
+            </div>
+            <span class="prob-val" style="color:${probColor}">${pct}%</span>
+          </div>
+        </td>
+        <td><span class="tbl-badge ${confCls}">${r.confidence || '—'}</span></td>
+        <td>${r.tenure ?? '—'} mo</td>
+        <td>$${parseFloat(r.monthly_charges || 0).toFixed(2)}</td>
+        <td>${r.contract || '—'}</td>
+        <td>${r.internet_service || '—'}</td>
+        <td style="font-size:0.75rem; color:var(--muted);">${r.payment_method || '—'}</td>
+      </tr>`;
+    });
+
+    html += `</tbody></table></div>`;
+    body.innerHTML = html;
+  }
+
+  /* ══════════════════════════════════════════════════════════════
+     TOAST
+  ══════════════════════════════════════════════════════════════ */
+  let toastTimeout;
+  function showToast(msg) {
+    const t = document.getElementById('errorToast');
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(toastTimeout);
+    toastTimeout = setTimeout(() => t.classList.remove('show'), 4000);
+  }
+
+  /* ══════════════════════════════════════════════════════════════
+     ANIMATED STAT COUNTERS
+  ══════════════════════════════════════════════════════════════ */
+  function animateCount(el) {
+    const target   = parseFloat(el.dataset.count);
+    const suffix   = el.dataset.suffix;
+    const isFloat  = target % 1 !== 0;
+    const duration = 1400;
+    const start    = performance.now();
+    const tick = (now) => {
+      const p    = Math.min((now - start) / duration, 1);
+      const ease = 1 - Math.pow(1 - p, 3);
+      const val  = target * ease;
+      el.textContent = (isFloat ? val.toFixed(1) : Math.round(val).toLocaleString()) + suffix;
+      if (p < 1) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }
+
+  const obs = new IntersectionObserver((entries) => {
+    entries.forEach(e => { if (e.isIntersecting) { animateCount(e.target); obs.unobserve(e.target); } });
+  }, { threshold: 0.3 });
+  document.querySelectorAll('[data-count]').forEach(el => obs.observe(el));
+
+  /* ══════════════════════════════════════════════════════════════
+     KEYBOARD NAVIGATION (Enter / Arrow keys for stepper)
+  ══════════════════════════════════════════════════════════════ */
+  document.addEventListener('keydown', (e) => {
+    // Only when predict tab is active
+    if (!document.getElementById('page-predict').classList.contains('active')) return;
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+    if (e.key === 'ArrowRight' && currentStep < TOTAL - 1) nextStep(currentStep);
+    if (e.key === 'ArrowLeft'  && currentStep > 0)         prevStep(currentStep);
+  });
+
+  /* ── Init ── */
+  updateStepper();
+</script>
 </body>
 </html>

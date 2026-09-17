@@ -1,84 +1,98 @@
 """
-FASTAPI + GRADIO SERVING APPLICATION - Production-Ready ML Model Serving
-========================================================================
+TELCO CHURN PREDICTION SERVICE - Production FastAPI & Web Dashboard
+===================================================================
 
-This application provides a complete serving solution for the Telco Customer Churn model
-with both programmatic API access and a user-friendly web interface.
-
-Architecture:
-- FastAPI: High-performance REST API with automatic OpenAPI documentation
-- Gradio: User-friendly web UI for manual testing and demonstrations
-- Pydantic: Data validation and automatic API documentation
+Endpoints:
+  GET  /                  → redirect to /dashboard
+  GET  /dashboard         → ChurnSight web UI (single prediction + batch + history)
+  POST /predict           → single customer churn prediction (JSON)
+  POST /predict/batch     → batch CSV upload, returns list of predictions (JSON)
+  GET  /history           → last 50 predictions from SQLite log
+  GET  /history/stats     → aggregate statistics
+  GET  /health            → service & model health check
+  GET  /docs              → OpenAPI Swagger UI
 """
 
-from fastapi import FastAPI
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
-from pydantic import BaseModel
-import gradio as gr
 import os
-from src.serving.inference import predict  # Core ML inference logic
+import io
+import csv
+import json
 
-# Initialize FastAPI application
+from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse, RedirectResponse, JSONResponse
+from pydantic import BaseModel
+
+from src.serving.inference import predict
+from src.app.db import init_db, log_prediction, get_history, get_stats
+
+# ── Initialise SQLite history DB ──────────────────────────────────────────────
+init_db()
+
+# ── FastAPI app ────────────────────────────────────────────────────────────────
 app = FastAPI(
     title="Telco Customer Churn Prediction API",
-    description="ML API for predicting customer churn in telecom industry",
-    version="1.0.0"
+    description=(
+        "ML API & Dashboard for predicting customer churn in the telecom industry. "
+        "Powered by XGBoost with SHAP explainability."
+    ),
+    version="2.0.0",
 )
 
-# === STATIC FILES SETUP ===
-# Setup static files directory for serving the custom dashboard
+# ── Static files ──────────────────────────────────────────────────────────────
 static_dir = os.path.join(os.path.dirname(__file__), "static")
 if os.path.exists(static_dir):
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
-# === DASHBOARD ROUTE ===
-# Serve the custom dashboard HTML at /dashboard
-@app.get("/dashboard")
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  Health
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.get("/health", tags=["Health"])
+async def health_check():
+    """Health check endpoint to verify service and model availability."""
+    return {"status": "healthy", "service": "telco-churn-api", "version": "2.0.0"}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  Dashboard
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.get("/dashboard", include_in_schema=False)
 async def dashboard():
-    """
-    Serve the custom dashboard frontend at /dashboard
-    This provides a modern, professional UI for churn prediction
-    """
+    """Serve the premium ChurnSight dashboard."""
     dashboard_file = os.path.join(static_dir, "index.html")
     if os.path.exists(dashboard_file):
-        return FileResponse(dashboard_file)
+        return FileResponse(dashboard_file, media_type="text/html")
     return {"error": "Dashboard not found"}
 
-# === HEALTH CHECK ENDPOINT ===
-# CRITICAL: Required for AWS Application Load Balancer health checks
-@app.get("/")
-def root():
-    """
-    Health check endpoint for monitoring and load balancer health checks.
-    Also redirects to the dashboard.
-    """
-    return {"status": "ok", "message": "API is running", "endpoints": {
-        "api_docs": "/docs",
-        "dashboard": "/dashboard",
-        "gradio_ui": "/ui",
-        "predict": "/predict"
-    }}
 
-# === REQUEST DATA SCHEMA ===
-# Pydantic model for automatic validation and API documentation
+@app.get("/", include_in_schema=False)
+async def root():
+    """Redirect root to the dashboard."""
+    return RedirectResponse(url="/dashboard")
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  Request / Response schemas
+# ═══════════════════════════════════════════════════════════════════════════════
+
 class CustomerData(BaseModel):
     """
     Customer data schema for churn prediction.
-    
-    This schema defines the exact 18 features required for churn prediction.
-    All features match the original dataset structure for consistency.
+    Defines the exact 18 features required for churn prediction.
     """
     # Demographics
     gender: str                # "Male" or "Female"
-    Partner: str               # "Yes" or "No" - has partner
-    Dependents: str            # "Yes" or "No" - has dependents
-    
+    Partner: str               # "Yes" or "No"
+    Dependents: str            # "Yes" or "No"
+
     # Phone services
     PhoneService: str          # "Yes" or "No"
     MultipleLines: str         # "Yes", "No", or "No phone service"
-    
-    # Internet services  
+
+    # Internet services
     InternetService: str       # "DSL", "Fiber optic", or "No"
     OnlineSecurity: str        # "Yes", "No", or "No internet service"
     OnlineBackup: str          # "Yes", "No", or "No internet service"
@@ -86,152 +100,132 @@ class CustomerData(BaseModel):
     TechSupport: str           # "Yes", "No", or "No internet service"
     StreamingTV: str           # "Yes", "No", or "No internet service"
     StreamingMovies: str       # "Yes", "No", or "No internet service"
-    
+
     # Account information
     Contract: str              # "Month-to-month", "One year", "Two year"
     PaperlessBilling: str      # "Yes" or "No"
     PaymentMethod: str         # "Electronic check", "Mailed check", etc.
-    
+
     # Numeric features
     tenure: int                # Number of months with company
     MonthlyCharges: float      # Monthly charges in dollars
     TotalCharges: float        # Total charges to date
 
-# === MAIN PREDICTION API ENDPOINT ===
-@app.post("/predict")
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  Single Prediction
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.post("/predict", tags=["Inference"])
 def get_prediction(data: CustomerData):
     """
-    Main prediction endpoint for customer churn prediction.
-    
-    This endpoint:
-    1. Receives validated customer data via Pydantic model
-    2. Calls the inference pipeline to transform features and predict
-    3. Returns churn prediction in JSON format
-    
-    Expected Response:
-    - {"prediction": "Likely to churn"} or {"prediction": "Not likely to churn"}
-    - {"error": "error_message"} if prediction fails
+    Predict churn for a single customer.
+
+    Returns:
+    - **prediction**: "Likely to churn" or "Not likely to churn"
+    - **probability**: real churn probability (0.0–1.0)
+    - **confidence**: "Borderline" | "Moderate" | "High Confidence"
+    - **shap_values**: top-8 feature importances for this prediction
     """
     try:
-        # Convert Pydantic model to dict and call inference pipeline
-        result = predict(data.dict())
-        return {"prediction": result}
+        payload = data.dict()
+        result = predict(payload)
+        log_prediction(payload, result)
+        return result
     except Exception as e:
-        # Return error details for debugging (consider logging in production)
-        return {"error": str(e)}
+        return JSONResponse(status_code=500, content={"error": str(e)})
 
 
-# =================================================== # 
+# ═══════════════════════════════════════════════════════════════════════════════
+#  Batch Prediction (CSV upload)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+REQUIRED_COLS = {
+    "gender", "Partner", "Dependents", "PhoneService", "MultipleLines",
+    "InternetService", "OnlineSecurity", "OnlineBackup", "DeviceProtection",
+    "TechSupport", "StreamingTV", "StreamingMovies", "Contract",
+    "PaperlessBilling", "PaymentMethod", "tenure", "MonthlyCharges", "TotalCharges",
+}
 
 
-# === GRADIO WEB INTERFACE ===
-def gradio_interface(
-    gender, Partner, Dependents, PhoneService, MultipleLines,
-    InternetService, OnlineSecurity, OnlineBackup, DeviceProtection,
-    TechSupport, StreamingTV, StreamingMovies, Contract,
-    PaperlessBilling, PaymentMethod, tenure, MonthlyCharges, TotalCharges
-):
+@app.post("/predict/batch", tags=["Inference"])
+async def batch_predict(file: UploadFile = File(...)):
     """
-    Gradio interface function that processes form inputs and returns prediction.
-    
-    This function:
-    1. Takes individual form inputs from Gradio UI
-    2. Constructs the data dictionary matching the API schema
-    3. Calls the same inference pipeline used by the API
-    4. Returns user-friendly prediction string
-    
+    Upload a CSV file and get churn predictions for every row.
+
+    The CSV must contain the same 18 columns as the single /predict endpoint.
+    Returns a JSON list where each item includes the original row data plus
+    prediction, probability, and confidence.
     """
-    # Construct data dictionary matching CustomerData schema
-    data = {
-        "gender": gender,
-        "Partner": Partner,
-        "Dependents": Dependents,
-        "PhoneService": PhoneService,
-        "MultipleLines": MultipleLines,
-        "InternetService": InternetService,
-        "OnlineSecurity": OnlineSecurity,
-        "OnlineBackup": OnlineBackup,
-        "DeviceProtection": DeviceProtection,
-        "TechSupport": TechSupport,
-        "StreamingTV": StreamingTV,
-        "StreamingMovies": StreamingMovies,
-        "Contract": Contract,
-        "PaperlessBilling": PaperlessBilling,
-        "PaymentMethod": PaymentMethod,
-        "tenure": int(tenure),              # Ensure integer type
-        "MonthlyCharges": float(MonthlyCharges),  # Ensure float type
-        "TotalCharges": float(TotalCharges),      # Ensure float type
-    }
-    
-    # Call same inference pipeline as API endpoint
-    result = predict(data)
-    return str(result)  # Return as string for Gradio display
+    if not file.filename.endswith(".csv"):
+        raise HTTPException(status_code=400, detail="Only .csv files are accepted.")
 
-# === GRADIO UI CONFIGURATION ===
-# Build comprehensive Gradio interface with all customer features
-demo = gr.Interface(
-    fn=gradio_interface,
-    inputs=[
-        # Demographics section
-        gr.Dropdown(["Male", "Female"], label="Gender", value="Male"),
-        gr.Dropdown(["Yes", "No"], label="Partner", value="No"),
-        gr.Dropdown(["Yes", "No"], label="Dependents", value="No"),
-        
-        # Phone services section
-        gr.Dropdown(["Yes", "No"], label="Phone Service", value="Yes"),
-        gr.Dropdown(["Yes", "No", "No phone service"], label="Multiple Lines", value="No"),
-        
-        # Internet services section (key churn predictors)
-        gr.Dropdown(["DSL", "Fiber optic", "No"], label="Internet Service", value="Fiber optic"),
-        gr.Dropdown(["Yes", "No", "No internet service"], label="Online Security", value="No"),
-        gr.Dropdown(["Yes", "No", "No internet service"], label="Online Backup", value="No"),
-        gr.Dropdown(["Yes", "No", "No internet service"], label="Device Protection", value="No"),
-        gr.Dropdown(["Yes", "No", "No internet service"], label="Tech Support", value="No"),
-        gr.Dropdown(["Yes", "No", "No internet service"], label="Streaming TV", value="Yes"),
-        gr.Dropdown(["Yes", "No", "No internet service"], label="Streaming Movies", value="Yes"),
-        
-        # Contract and billing section (major churn factors)
-        gr.Dropdown(["Month-to-month", "One year", "Two year"], label="Contract", value="Month-to-month"),
-        gr.Dropdown(["Yes", "No"], label="Paperless Billing", value="Yes"),
-        gr.Dropdown([
-            "Electronic check", "Mailed check",
-            "Bank transfer (automatic)", "Credit card (automatic)"
-        ], label="Payment Method", value="Electronic check"),
-        
-        # Numeric features (important for churn prediction)
-        gr.Number(label="Tenure (months)", value=1, minimum=0, maximum=100),
-        gr.Number(label="Monthly Charges ($)", value=85.0, minimum=0, maximum=200),
-        gr.Number(label="Total Charges ($)", value=85.0, minimum=0, maximum=10000),
-    ],
-    outputs=gr.Textbox(label="Churn Prediction", lines=2),
-    title="🔮 Telco Customer Churn Predictor",
-    description="""
-    **Predict customer churn probability using machine learning**
-    
-    Fill in the customer details below to get a churn prediction. The model uses XGBoost trained on 
-    historical telecom customer data to identify customers at risk of churning.
-    
-    💡 **Tip**: Month-to-month contracts with fiber optic internet and electronic check payments 
-    tend to have higher churn rates.
-    """,
-    examples=[
-        # High churn risk example
-        ["Female", "No", "No", "Yes", "No", "Fiber optic", "No", "No", "No", 
-         "No", "Yes", "Yes", "Month-to-month", "Yes", "Electronic check", 
-         1, 85.0, 85.0],
-        # Low churn risk example  
-        ["Male", "Yes", "Yes", "Yes", "Yes", "DSL", "Yes", "Yes", "Yes",
-         "Yes", "No", "No", "Two year", "No", "Credit card (automatic)",
-         60, 45.0, 2700.0]
-    ],
-    theme=gr.themes.Soft()  # Professional appearance
-)
+    contents = await file.read()
+    try:
+        text = contents.decode("utf-8-sig")  # handle BOM
+        reader = csv.DictReader(io.StringIO(text))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Could not parse CSV: {e}")
 
-# === MOUNT GRADIO UI INTO FASTAPI ===
-# This creates the /ui endpoint that serves the Gradio interface
-# IMPORTANT: This must be the final line to properly integrate Gradio with FastAPI
-app = gr.mount_gradio_app(
-    app,           # FastAPI application instance
-    demo,          # Gradio interface
-    path="/ui"     # URL path where Gradio will be accessible
-)
+    # Validate columns
+    if reader.fieldnames:
+        missing = REQUIRED_COLS - set(reader.fieldnames)
+        if missing:
+            raise HTTPException(
+                status_code=400,
+                detail=f"CSV is missing required columns: {', '.join(sorted(missing))}",
+            )
+
+    results = []
+    errors = []
+    for i, row in enumerate(reader, start=2):  # start=2 → header is row 1
+        try:
+            payload = {
+                "gender": row.get("gender", ""),
+                "Partner": row.get("Partner", ""),
+                "Dependents": row.get("Dependents", ""),
+                "PhoneService": row.get("PhoneService", ""),
+                "MultipleLines": row.get("MultipleLines", ""),
+                "InternetService": row.get("InternetService", ""),
+                "OnlineSecurity": row.get("OnlineSecurity", ""),
+                "OnlineBackup": row.get("OnlineBackup", ""),
+                "DeviceProtection": row.get("DeviceProtection", ""),
+                "TechSupport": row.get("TechSupport", ""),
+                "StreamingTV": row.get("StreamingTV", ""),
+                "StreamingMovies": row.get("StreamingMovies", ""),
+                "Contract": row.get("Contract", ""),
+                "PaperlessBilling": row.get("PaperlessBilling", ""),
+                "PaymentMethod": row.get("PaymentMethod", ""),
+                "tenure": int(float(row.get("tenure", 0) or 0)),
+                "MonthlyCharges": float(row.get("MonthlyCharges", 0) or 0),
+                "TotalCharges": float(row.get("TotalCharges", 0) or 0),
+            }
+            pred = predict(payload)
+            log_prediction(payload, pred)
+            results.append({
+                "row": i,
+                **payload,
+                "prediction": pred["prediction"],
+                "probability": pred["probability"],
+                "confidence": pred["confidence"],
+            })
+        except Exception as e:
+            errors.append({"row": i, "error": str(e)})
+
+    return {"total": len(results), "errors": errors, "predictions": results}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  Prediction History
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.get("/history", tags=["History"])
+def prediction_history(limit: int = 50):
+    """Return the most recent predictions (default: last 50)."""
+    return get_history(limit=limit)
+
+
+@app.get("/history/stats", tags=["History"])
+def history_stats():
+    """Return aggregate statistics across all logged predictions."""
+    return get_stats()

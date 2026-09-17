@@ -11,6 +11,7 @@ Key Responsibilities:
 2. Apply identical feature transformations as used during training
 3. Ensure correct feature ordering for model input
 4. Convert model predictions to user-friendly output
+5. Return real churn probability + SHAP feature importance values
 
 CRITICAL PATTERN: Training/Serving Consistency
 - Uses fixed BINARY_MAP for deterministic binary encoding
@@ -25,36 +26,73 @@ Production Deployment:
 """
 
 import os
+import sys
 import pandas as pd
 import mlflow
+import mlflow.sklearn
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 # === MODEL LOADING CONFIGURATION ===
 # IMPORTANT: This path is set during Docker container build
 # In development: uses local MLflow artifacts
-# In production: uses model copied to container at build time
-MODEL_DIR = "/app/model"
+# In production, MODEL_DIR points to the model copied into the container.
+# Locally, resolve the repository from this file so imports do not depend on cwd.
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+LOCAL_BUNDLED_MODEL = os.path.join(os.path.dirname(__file__), "model", "model")
+MODEL_DIR = os.environ.get("MODEL_DIR", "/app/model" if os.path.exists("/app/model") else LOCAL_BUNDLED_MODEL)
+LOCAL_MLRUNS_DIR = os.path.join(PROJECT_ROOT, "mlruns")
 
 try:
-    # Load the trained XGBoost model in MLflow pyfunc format
-    # This ensures compatibility regardless of the underlying ML library
+    # Load the trained XGBoost model in MLflow pyfunc format (for standard predict)
     model = mlflow.pyfunc.load_model(MODEL_DIR)
     print(f"✅ Model loaded successfully from {MODEL_DIR}")
 except Exception as e:
-    print(f"❌ Failed to load model from {MODEL_DIR}: {e}")
-    # Fallback for local development (OPTIONAL)
+    print(f"⚠️ Primary model path {MODEL_DIR} failed: {e}")
+    # Fallback for local development if bundled model wasn't at primary path
     try:
-        # Try loading from local MLflow tracking
-        import glob
-        local_model_paths = glob.glob("./mlruns/*/*/artifacts/model")
-        if local_model_paths:
-            latest_model = max(local_model_paths, key=os.path.getmtime)
-            model = mlflow.pyfunc.load_model(latest_model)
-            MODEL_DIR = latest_model
-            print(f"✅ Fallback: Loaded model from {latest_model}")
+        if os.path.exists(LOCAL_BUNDLED_MODEL):
+            model = mlflow.pyfunc.load_model(LOCAL_BUNDLED_MODEL)
+            MODEL_DIR = LOCAL_BUNDLED_MODEL
+            print(f"✅ Loaded bundled model from {LOCAL_BUNDLED_MODEL}")
         else:
-            raise Exception("No model found in local mlruns")
+            import glob
+            local_model_paths = glob.glob(
+                os.path.join(LOCAL_MLRUNS_DIR, "*", "*", "artifacts", "model")
+            )
+            if local_model_paths:
+                latest_model = max(local_model_paths, key=os.path.getmtime)
+                model = mlflow.pyfunc.load_model(latest_model)
+                MODEL_DIR = latest_model
+                print(f"✅ Fallback: Loaded model from {latest_model}")
+            else:
+                raise Exception("No model found")
     except Exception as fallback_error:
         raise Exception(f"Failed to load model: {e}. Fallback failed: {fallback_error}")
+
+# === LOAD SKLEARN MODEL FOR PROBABILITY + SHAP ===
+# The sklearn-flavoured model lets us call predict_proba and use shap.TreeExplainer
+try:
+    sklearn_model = mlflow.sklearn.load_model(MODEL_DIR)
+    print("✅ sklearn model loaded for probability + SHAP")
+except Exception as e:
+    sklearn_model = None
+    print(f"⚠️ sklearn model load failed (probability/SHAP disabled): {e}")
+
+# === SHAP EXPLAINER SETUP ===
+SHAP_AVAILABLE = False
+explainer = None
+try:
+    import shap
+    if sklearn_model is not None:
+        explainer = shap.TreeExplainer(sklearn_model)
+        SHAP_AVAILABLE = True
+        print("✅ SHAP TreeExplainer ready")
+except Exception as e:
+    print(f"⚠️ SHAP not available: {e}")
 
 # === FEATURE SCHEMA LOADING ===
 # CRITICAL: Load the exact feature column order used during training
@@ -88,6 +126,40 @@ BINARY_MAP = {
 
 # Numeric columns that need type coercion
 NUMERIC_COLS = ["tenure", "MonthlyCharges", "TotalCharges"]
+
+# Friendly display names for SHAP features (one-hot encoded cols → readable)
+FEATURE_DISPLAY_NAMES = {
+    "tenure": "Tenure (months)",
+    "MonthlyCharges": "Monthly Charges",
+    "TotalCharges": "Total Charges",
+    "gender": "Gender",
+    "Partner": "Has Partner",
+    "Dependents": "Has Dependents",
+    "PhoneService": "Phone Service",
+    "PaperlessBilling": "Paperless Billing",
+    "MultipleLines_No phone service": "Multiple Lines (No phone)",
+    "MultipleLines_Yes": "Multiple Lines",
+    "InternetService_Fiber optic": "Internet: Fiber Optic",
+    "InternetService_No": "Internet: None",
+    "OnlineSecurity_No internet service": "Online Security (No internet)",
+    "OnlineSecurity_Yes": "Online Security",
+    "OnlineBackup_No internet service": "Online Backup (No internet)",
+    "OnlineBackup_Yes": "Online Backup",
+    "DeviceProtection_No internet service": "Device Protection (No internet)",
+    "DeviceProtection_Yes": "Device Protection",
+    "TechSupport_No internet service": "Tech Support (No internet)",
+    "TechSupport_Yes": "Tech Support",
+    "StreamingTV_No internet service": "Streaming TV (No internet)",
+    "StreamingTV_Yes": "Streaming TV",
+    "StreamingMovies_No internet service": "Streaming Movies (No internet)",
+    "StreamingMovies_Yes": "Streaming Movies",
+    "Contract_One year": "Contract: One Year",
+    "Contract_Two year": "Contract: Two Year",
+    "PaymentMethod_Credit card (automatic)": "Payment: Credit Card",
+    "PaymentMethod_Electronic check": "Payment: Electronic Check",
+    "PaymentMethod_Mailed check": "Payment: Mailed Check",
+}
+
 
 def _serve_transform(df: pd.DataFrame) -> pd.DataFrame:
     """
@@ -162,68 +234,102 @@ def _serve_transform(df: pd.DataFrame) -> pd.DataFrame:
     
     return df
 
-def predict(input_dict: dict) -> str:
+
+def _get_confidence(probability: float, threshold: float = 0.35) -> str:
+    """
+    Convert a raw probability into a human-readable confidence label.
+    
+    Confidence is measured by the distance from the classification threshold.
+    A prediction right at the threshold is 'Borderline', while predictions
+    far from it are 'High Confidence'.
+    """
+    distance = abs(probability - threshold)
+    if distance < 0.10:
+        return "Borderline"
+    elif distance < 0.25:
+        return "Moderate"
+    else:
+        return "High Confidence"
+
+
+def _get_shap_values(df_enc: pd.DataFrame) -> list:
+    """
+    Compute SHAP feature importance values for a single prediction row.
+    
+    Returns a sorted list of the top 8 features by absolute impact,
+    with friendly display names and signed impact values (positive = 
+    increases churn risk, negative = decreases churn risk).
+    """
+    if not SHAP_AVAILABLE or explainer is None:
+        return []
+    try:
+        sv = explainer.shap_values(df_enc)
+        # sv shape: (1, n_features) for XGBoost binary classification
+        impacts = []
+        for i, col in enumerate(FEATURE_COLS):
+            impact = float(sv[0][i]) if hasattr(sv[0], "__len__") else float(sv[i])
+            display = FEATURE_DISPLAY_NAMES.get(col, col)
+            impacts.append({
+                "feature": display,
+                "raw_feature": col,
+                "impact": round(impact, 4),
+            })
+        # Sort by absolute impact (most influential first)
+        impacts.sort(key=lambda x: abs(x["impact"]), reverse=True)
+        return impacts[:8]
+    except Exception as e:
+        print(f"⚠️ SHAP computation error: {e}")
+        return []
+
+
+def predict(input_dict: dict) -> dict:
     """
     Main prediction function for customer churn inference.
     
-    This function provides the complete inference pipeline from raw customer data
-    to business-friendly prediction output. It's called by both the FastAPI endpoint
-    and the Gradio interface to ensure consistent predictions.
-    
-    Pipeline:
-    1. Convert input dictionary to DataFrame
-    2. Apply feature transformations (identical to training)
-    3. Generate model prediction using loaded XGBoost model
-    4. Convert prediction to user-friendly string
-    
+    Returns a rich result dict containing:
+    - prediction: Human-readable label ("Likely to churn" / "Not likely to churn")
+    - probability: Real churn probability from model.predict_proba() (0.0–1.0)
+    - confidence: Confidence label based on distance from threshold
+    - shap_values: Top 8 feature importance values for this prediction
+
     Args:
         input_dict: Dictionary containing raw customer data with keys matching
                    the CustomerData schema (18 features total)
-                   
-    Returns:
-        Human-readable prediction string:
-        - "Likely to churn" for high-risk customers (model prediction = 1)
-        - "Not likely to churn" for low-risk customers (model prediction = 0)
-        
-    Example:
-        >>> customer_data = {
-        ...     "gender": "Female", "tenure": 1, "Contract": "Month-to-month",
-        ...     "MonthlyCharges": 85.0, ... # other features
-        ... }
-        >>> predict(customer_data)
-        "Likely to churn"
     """
-    
     # === STEP 1: Convert Input to DataFrame ===
-    # Create single-row DataFrame for pandas transformations
     df = pd.DataFrame([input_dict])
     
     # === STEP 2: Apply Feature Transformations ===
-    # Use the same transformation pipeline as training
     df_enc = _serve_transform(df)
     
-    # === STEP 3: Generate Model Prediction ===
-    # Call the loaded MLflow model for inference
-    # The model returns predictions in various formats depending on the ML library
+    # === STEP 3: Get Binary Prediction ===
     try:
         preds = model.predict(df_enc)
-        
-        # Normalize prediction output to consistent format
         if hasattr(preds, "tolist"):
-            preds = preds.tolist()  # Convert numpy array to list
-            
-        # Extract single prediction value (for single-row input)
-        if isinstance(preds, (list, tuple)) and len(preds) == 1:
-            result = preds[0]
-        else:
-            result = preds
-            
+            preds = preds.tolist()
+        result_int = preds[0] if isinstance(preds, (list, tuple)) else preds
     except Exception as e:
         raise Exception(f"Model prediction failed: {e}")
-    
-    # === STEP 4: Convert to Business-Friendly Output ===
-    # Convert binary prediction (0/1) to actionable business language
-    if result == 1:
-        return "Likely to churn"      # High risk - needs intervention
-    else:
-        return "Not likely to churn"  # Low risk - maintain normal service
+
+    # === STEP 4: Get Real Churn Probability ===
+    probability = 0.5  # safe fallback
+    if sklearn_model is not None:
+        try:
+            proba_arr = sklearn_model.predict_proba(df_enc)
+            probability = float(proba_arr[0][1])  # probability of class 1 (churn)
+        except Exception as e:
+            print(f"⚠️ predict_proba failed: {e}")
+
+    # === STEP 5: Compute SHAP Feature Importance ===
+    shap_values = _get_shap_values(df_enc)
+
+    # === STEP 6: Build Rich Response ===
+    prediction_label = "Likely to churn" if result_int == 1 else "Not likely to churn"
+    confidence = _get_confidence(probability)
+
+    return {
+        "prediction": prediction_label,
+        "probability": round(probability, 4),
+        "confidence": confidence,
+        "shap_values": shap_values,
+    }

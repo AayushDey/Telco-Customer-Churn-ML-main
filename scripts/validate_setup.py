@@ -10,6 +10,11 @@ import os
 import sys
 import subprocess
 
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
 def check_python_version():
     """Verify Python 3.11+ is installed."""
     version = sys.version_info
@@ -22,16 +27,22 @@ def check_python_version():
 
 def check_packages():
     """Verify all required packages are installed."""
-    required_packages = [
-        'pandas', 'numpy', 'scikit-learn', 'xgboost',
-        'mlflow', 'fastapi', 'uvicorn', 'gradio',
-        'great_expectations', 'pydantic'
-    ]
+    required_packages = {
+        'pandas': 'pandas',
+        'numpy': 'numpy',
+        'scikit-learn': 'sklearn',
+        'xgboost': 'xgboost',
+        'mlflow': 'mlflow',
+        'fastapi': 'fastapi',
+        'uvicorn': 'uvicorn',
+        'great_expectations': 'great_expectations',
+        'pydantic': 'pydantic',
+    }
     
     missing = []
-    for pkg in required_packages:
+    for pkg, import_name in required_packages.items():
         try:
-            __import__(pkg)
+            __import__(import_name)
             print(f"✅ {pkg:20s} installed")
         except ImportError:
             print(f"❌ {pkg:20s} NOT installed")
@@ -50,12 +61,9 @@ def check_directories():
         'data/processed',
         'artifacts',
         'src/app',
-        'src/data',
-        'src/features',
-        'src/models',
         'src/serving',
-        'src/utils',
-        'scripts'
+        'scripts',
+        'scripts/pipeline'
     ]
     
     missing = []
@@ -77,12 +85,12 @@ def check_files():
     required_files = [
         'requirements.txt',
         'src/app/main.py',
-        'src/data/load_data.py',
-        'src/data/preprocess.py',
-        'src/features/build_features.py',
         'src/serving/inference.py',
-        'src/utils/validate_data.py',
-        'scripts/run_pipeline.py'
+        'scripts/run_pipeline.py',
+        'scripts/pipeline/load_data.py',
+        'scripts/pipeline/preprocess.py',
+        'scripts/pipeline/build_features.py',
+        'scripts/pipeline/validate_data.py'
     ]
     
     missing = []
@@ -100,16 +108,20 @@ def check_files():
 
 def check_dataset():
     """Check if Telco dataset is available."""
-    dataset_path = 'data/raw/Telco-Customer-Churn.csv'
+    dataset_paths = [
+        'data/raw/Telco-Customer-Churn.csv',
+        'data/raw/WA_Fn-UseC_-Telco-Customer-Churn.csv',
+    ]
+    dataset_path = next((path for path in dataset_paths if os.path.isfile(path)), None)
     
-    if os.path.isfile(dataset_path):
+    if dataset_path:
         print(f"✅ Dataset found: {dataset_path}")
         # Check file size
         size_mb = os.path.getsize(dataset_path) / (1024 * 1024)
         print(f"   Size: {size_mb:.2f} MB")
         return True
     else:
-        print(f"❌ Dataset NOT found: {dataset_path}")
+        print("❌ Dataset NOT found in data/raw")
         print(f"   You must download: 'Telco Customer Churn' dataset from Kaggle")
         print(f"   or another compatible dataset with required columns")
         return False
@@ -119,11 +131,8 @@ def check_init_files():
     packages = [
         'src',
         'src/app',
-        'src/data',
-        'src/features',
-        'src/models',
         'src/serving',
-        'src/utils'
+        'scripts/pipeline'
     ]
     
     missing = []
