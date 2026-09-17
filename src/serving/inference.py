@@ -28,8 +28,14 @@ Production Deployment:
 import os
 import sys
 import pandas as pd
-import mlflow
-import mlflow.sklearn
+import joblib
+
+# MLflow is optional for serving (direct joblib loading is much faster and cleaner)
+try:
+    import mlflow
+    import mlflow.sklearn
+except Exception:
+    mlflow = None
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -38,49 +44,55 @@ if hasattr(sys.stderr, "reconfigure"):
 
 # === MODEL LOADING CONFIGURATION ===
 # IMPORTANT: This path is set during Docker container build
-# In development: uses local MLflow artifacts
-# In production, MODEL_DIR points to the model copied into the container.
-# Locally, resolve the repository from this file so imports do not depend on cwd.
+# In development: uses local bundled model artifacts
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 LOCAL_BUNDLED_MODEL = os.path.join(os.path.dirname(__file__), "model", "model")
 MODEL_DIR = os.environ.get("MODEL_DIR", "/app/model" if os.path.exists("/app/model") else LOCAL_BUNDLED_MODEL)
 LOCAL_MLRUNS_DIR = os.path.join(PROJECT_ROOT, "mlruns")
 
-try:
-    # Load the trained XGBoost model in MLflow pyfunc format (for standard predict)
-    model = mlflow.pyfunc.load_model(MODEL_DIR)
-    print(f"✅ Model loaded successfully from {MODEL_DIR}")
-except Exception as e:
-    print(f"⚠️ Primary model path {MODEL_DIR} failed: {e}")
-    # Fallback for local development if bundled model wasn't at primary path
-    try:
-        if os.path.exists(LOCAL_BUNDLED_MODEL):
-            model = mlflow.pyfunc.load_model(LOCAL_BUNDLED_MODEL)
-            MODEL_DIR = LOCAL_BUNDLED_MODEL
-            print(f"✅ Loaded bundled model from {LOCAL_BUNDLED_MODEL}")
-        else:
-            import glob
-            local_model_paths = glob.glob(
-                os.path.join(LOCAL_MLRUNS_DIR, "*", "*", "artifacts", "model")
-            )
-            if local_model_paths:
-                latest_model = max(local_model_paths, key=os.path.getmtime)
-                model = mlflow.pyfunc.load_model(latest_model)
-                MODEL_DIR = latest_model
-                print(f"✅ Fallback: Loaded model from {latest_model}")
-            else:
-                raise Exception("No model found")
-    except Exception as fallback_error:
-        raise Exception(f"Failed to load model: {e}. Fallback failed: {fallback_error}")
+model = None
+sklearn_model = None
 
-# === LOAD SKLEARN MODEL FOR PROBABILITY + SHAP ===
-# The sklearn-flavoured model lets us call predict_proba and use shap.TreeExplainer
-try:
-    sklearn_model = mlflow.sklearn.load_model(MODEL_DIR)
-    print("✅ sklearn model loaded for probability + SHAP")
-except Exception as e:
-    sklearn_model = None
-    print(f"⚠️ sklearn model load failed (probability/SHAP disabled): {e}")
+# 1. Direct Joblib Load (Fastest, zero MLflow/pkg_resources dependency)
+pkl_candidates = [
+    os.path.join(MODEL_DIR, "model.pkl"),
+    os.path.join(LOCAL_BUNDLED_MODEL, "model.pkl"),
+]
+
+for pkl_path in pkl_candidates:
+    if os.path.exists(pkl_path):
+        try:
+            loaded_model = joblib.load(pkl_path)
+            model = loaded_model
+            sklearn_model = loaded_model
+            print(f"✅ Model loaded successfully from {pkl_path}")
+            break
+        except Exception as e:
+            print(f"⚠️ Direct model load from {pkl_path} failed: {e}")
+
+# 2. MLflow pyfunc Fallback (if direct load was not possible and mlflow is installed)
+if model is None and mlflow is not None:
+    try:
+        model = mlflow.pyfunc.load_model(MODEL_DIR)
+        print(f"✅ MLflow pyfunc model loaded from {MODEL_DIR}")
+    except Exception as e:
+        print(f"⚠️ MLflow pyfunc model load failed: {e}")
+        try:
+            if os.path.exists(LOCAL_BUNDLED_MODEL):
+                model = mlflow.pyfunc.load_model(LOCAL_BUNDLED_MODEL)
+                MODEL_DIR = LOCAL_BUNDLED_MODEL
+        except Exception:
+            pass
+
+    try:
+        sklearn_model = mlflow.sklearn.load_model(MODEL_DIR)
+        print("✅ MLflow sklearn model loaded for probability + SHAP")
+    except Exception as e:
+        print(f"⚠️ MLflow sklearn model load failed: {e}")
+
+if model is None:
+    raise RuntimeError("Failed to load customer churn prediction model from any source.")
+
 
 # === SHAP EXPLAINER SETUP ===
 SHAP_AVAILABLE = False
